@@ -12,6 +12,9 @@
   "dependencies": {
     "@goongmaps/goong-js": "^1.0.9",
     "@goongmaps/goong-map-react": "^1.1.2",
+    "@types/nprogress": "^0.2.3",
+    "axios": "^1.13.2",
+    "nprogress": "^0.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-map-gl": "^8.1.0"

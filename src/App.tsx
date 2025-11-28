@@ -2,6 +2,8 @@ import "@goongmaps/goong-js/dist/goong-js.css";
 import { useEffect, useRef, useState } from "react";
 import salesmenData from "./data/saleman.json";
 import "./App.css";
+import { fetchSaleMan } from "./service/api.ts";
+import type { SalesMan } from "./types/api";
 
 const GOONG_MAPTILES_KEY = import.meta.env.VITE_GOONG_MAPTILES_KEY;
 
@@ -16,6 +18,26 @@ export default function App() {
   const mapRef = useRef<any>(null);
   const [isLegendOpen, setIsLegendOpen] = useState(false);
 
+  const [saleMan, setSaleMan] = useState<SalesMan[]>([]);
+
+  const loadSalesmen = async () => {
+    const res = await fetchSaleMan();
+    console.log("🚀 ~ loadSalesmen ~ res:", JSON.stringify(res, null, 2));
+    if (res.data) {
+      setSaleMan(res.data);
+    }
+  };
+
+  useEffect(() => {
+    loadSalesmen();
+  }, []);
+
+  // Log saleMan khi state thay đổi
+  useEffect(() => {
+    console.log("🚀 ~ saleMan state:", saleMan);
+    console.log("🚀 ~ saleMan length:", saleMan.length);
+  }, [saleMan]);
+
   useEffect(() => {
     if (!mapContainer.current) return;
 
@@ -23,7 +45,8 @@ export default function App() {
 
     const map = new (window as any).goongjs.Map({
       container: mapContainer.current!,
-      style: "https://tiles.goong.io/assets/navigation_day.json",
+      // style: "https://tiles.goong.io/assets/navigation_day.json",
+      style: "https://tiles.goong.io/assets/goong_map_web.json",
       center: [106.705611, 10.760948],
       zoom: 12,
     });
@@ -45,21 +68,11 @@ export default function App() {
           <ul>
             <li><strong>Mã NV:</strong> ${salesman.salesman_code}</li>
             <li><strong>Thiết bị:</strong> ${salesman.device}</li>
-            <li><strong>Doanh số tháng:</strong> ${formatMoney(
-              salesman.sales_month
-            )}</li>
-            <li><strong>Doanh số ngày:</strong> ${formatMoney(
-              salesman.sales_today
-            )}</li>
-            <li><strong>Đã viếng thăm:</strong> ${
-              salesman.visited
-            } cửa hàng</li>
-            <li><strong>Chưa viếng thăm:</strong> ${
-              salesman.not_visited
-            } cửa hàng</li>
-            <li><strong>Đơn hàng hôm nay:</strong> ${
-              salesman.orders_today
-            } đơn</li>
+            <li><strong>Doanh số tháng:</strong> ${formatMoney(salesman.sales_month)}</li>
+            <li><strong>Doanh số ngày:</strong> ${formatMoney(salesman.sales_today)}</li>
+            <li><strong>Đã viếng thăm:</strong> ${salesman.visited} cửa hàng</li>
+            <li><strong>Chưa viếng thăm:</strong> ${salesman.not_visited} cửa hàng</li>
+            <li><strong>Đơn hàng hôm nay:</strong> ${salesman.orders_today} đơn</li>
           </ul>
         </div>
       `;
@@ -93,9 +106,7 @@ export default function App() {
         return;
       }
 
-      console.log(
-        `✈️ Đang di chuyển đến vị trí của ${salesman.name} (${salesmanCode})`
-      );
+      console.log(`✈️ Đang di chuyển đến vị trí của ${salesman.name} (${salesmanCode})`);
 
       map.flyTo({
         center: salesman.coords,
@@ -185,11 +196,7 @@ export default function App() {
       const svgNotVisited = createSVGMarker("#949494", USER_ICON_SVG);
 
       // Hàm load image từ SVG
-      const loadImageFromSVG = (
-        svg: string,
-        name: string,
-        callback: () => void
-      ) => {
+      const loadImageFromSVG = (svg: string, name: string, callback: () => void) => {
         const img = new Image();
         img.onload = () => {
           map.addImage(name, img);
@@ -218,15 +225,7 @@ export default function App() {
                 30,
                 "#F01919",
               ],
-              "circle-radius": [
-                "step",
-                ["get", "point_count"],
-                20,
-                10,
-                30,
-                30,
-                40,
-              ],
+              "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 30, 40],
               "circle-stroke-width": 2,
               "circle-stroke-color": "#ffffff",
               "circle-opacity": 0.9,
@@ -279,11 +278,7 @@ export default function App() {
       };
 
       // Load 4 icons
-      loadImageFromSVG(
-        svgVisitedWithOrder,
-        "icon-visited-with-order",
-        onAllLoaded
-      );
+      loadImageFromSVG(svgVisitedWithOrder, "icon-visited-with-order", onAllLoaded);
       loadImageFromSVG(svgVisitedNoOrder, "icon-visited-no-order", onAllLoaded);
       loadImageFromSVG(svgVisitedClosed, "icon-visited-closed", onAllLoaded);
       loadImageFromSVG(svgNotVisited, "icon-not-visited", onAllLoaded);
@@ -308,15 +303,13 @@ export default function App() {
       map.on("click", "clusters", (e: any) => {
         const features = e.features;
         const clusterId = features[0].properties.cluster_id;
-        map
-          .getSource("salesmen")
-          .getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
-            if (err) return;
-            map.easeTo({
-              center: features[0].geometry.coordinates,
-              zoom: zoom,
-            });
+        map.getSource("salesmen").getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
+          if (err) return;
+          map.easeTo({
+            center: features[0].geometry.coordinates,
+            zoom: zoom,
           });
+        });
       });
 
       // Hover effect cho cluster
@@ -349,12 +342,7 @@ export default function App() {
         onClick={() => setIsLegendOpen(!isLegendOpen)}
         type="button"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width={20}
-          height={20}
-          viewBox="0 0 24 24"
-        >
+        <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24">
           <path
             fill="currentColor"
             d="M11 17h2v-6h-2zm1-8q.425 0 .713-.288T13 8t-.288-.712T12 7t-.712.288T11 8t.288.713T12 9m0 13q-2.075 0-3.9-.788t-3.175-2.137T2.788 15.9T2 12t.788-3.9t2.137-3.175T8.1 2.788T12 2t3.9.788t3.175 2.137T21.213 8.1T22 12t-.788 3.9t-2.137 3.175t-3.175 2.138T12 22m0-2q3.35 0 5.675-2.325T20 12t-2.325-5.675T12 4T6.325 6.325T4 12t2.325 5.675T12 20m0-8"
