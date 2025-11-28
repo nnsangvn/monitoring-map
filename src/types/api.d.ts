@@ -1,12 +1,12 @@
 export interface SalesMan {
   id: number;
-  code: string;
+  code: string; // SalesMan Code
   user_id: number;
   phone: string;
-  name: string;
-  lat: null | string;
-  long: null | string;
-  device_name: null | string;
+  name: string; // SalesMan Name
+  lat: null | string; // Latitude
+  long: null | string; // Longitude
+  device_name: null | string; // Thiết bị
   avatar: null | string;
   area: null;
   channels: null;
@@ -16,15 +16,15 @@ export interface SalesMan {
   created_at: string;
   updated_at: string;
   time_diff: null | string;
-  is_online: number;
+  is_online: number; // Trạng thái 1:0
   total_sale: number;
   total_sale_formatted: string;
   total_sale_day_formatted: string;
   total_sale_completed: number;
   total_sale__completed_formatted: string;
   order_count: number;
-  order_count_day: number;
-  total_visit_day: number;
+  order_count_day: number; //Đơn hàng hôm nay
+  total_visit_day: number; // Đã viếng thăm
   type: string;
 }
 

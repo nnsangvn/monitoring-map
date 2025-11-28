@@ -1,6 +1,6 @@
 import "@goongmaps/goong-js/dist/goong-js.css";
 import { useEffect, useRef, useState } from "react";
-import salesmenData from "./data/saleman.json";
+// import salesmenData from "./data/saleman.json";
 import "./App.css";
 import { fetchSaleMan } from "./service/api.ts";
 import type { SalesMan } from "./types/api";
@@ -20,15 +20,14 @@ export default function App() {
 
   const [saleMan, setSaleMan] = useState<SalesMan[]>([]);
 
-  const loadSalesmen = async () => {
-    const res = await fetchSaleMan();
-    console.log("🚀 ~ loadSalesmen ~ res:", JSON.stringify(res, null, 2));
-    if (res.data) {
-      setSaleMan(res.data);
-    }
-  };
-
   useEffect(() => {
+    const loadSalesmen = async () => {
+      const res = await fetchSaleMan();
+      console.log("🚀 ~ loadSalesmen ~ res:", JSON.stringify(res, null, 2));
+      if (res.data) {
+        setSaleMan(res.data);
+      }
+    };
     loadSalesmen();
   }, []);
 
@@ -47,14 +46,14 @@ export default function App() {
       container: mapContainer.current!,
       // style: "https://tiles.goong.io/assets/navigation_day.json",
       style: "https://tiles.goong.io/assets/goong_map_web.json",
-      center: [106.705611, 10.760948],
-      zoom: 12,
+      center: [106.72055776537006, 10.803239881310812],
+      zoom: 16,
     });
 
     mapRef.current = map;
 
     // ========== HÀM HIỂN THỊ POPUP ==========
-    const showSalesmanPopup = (salesman: any, coords: [number, number]) => {
+    const showSalesmanPopup = (salesman: SalesMan, coords: [number, number]) => {
       const formatMoney = (amount: number) => {
         return new Intl.NumberFormat("vi-VN", {
           style: "currency",
@@ -66,13 +65,12 @@ export default function App() {
         <div class="salesman-popup">
           <div class="salesman-name">${salesman.name}</div>
           <ul>
-            <li><strong>Mã NV:</strong> ${salesman.salesman_code}</li>
-            <li><strong>Thiết bị:</strong> ${salesman.device}</li>
-            <li><strong>Doanh số tháng:</strong> ${formatMoney(salesman.sales_month)}</li>
-            <li><strong>Doanh số ngày:</strong> ${formatMoney(salesman.sales_today)}</li>
-            <li><strong>Đã viếng thăm:</strong> ${salesman.visited} cửa hàng</li>
-            <li><strong>Chưa viếng thăm:</strong> ${salesman.not_visited} cửa hàng</li>
-            <li><strong>Đơn hàng hôm nay:</strong> ${salesman.orders_today} đơn</li>
+            <li><strong>Mã NV:</strong> ${salesman.code}</li>
+            <li><strong>Thiết bị:</strong> ${salesman.device_name || "N/A"}</li>
+            <li><strong>Doanh số tháng:</strong> ${formatMoney(salesman.total_sale)}</li>
+            <li><strong>Doanh số ngày:</strong> ${formatMoney(salesman.total_sale_completed)}</li>
+            <li><strong>Đã viếng thăm:</strong> ${salesman.total_visit_day} cửa hàng</li>
+            <li><strong>Đơn hàng hôm nay:</strong> ${salesman.order_count_day} đơn</li>
           </ul>
         </div>
       `;
@@ -89,16 +87,16 @@ export default function App() {
     };
 
     // ========== HÀM FLY TO SALESMAN ==========
-    const flyToSalesman = (salesmen: any[]) => {
+    const flyToSalesman = (salesmen: SalesMan[]) => {
       const params = new URLSearchParams(window.location.search);
-      const salesmanCode = params.get("salesman_code");
+      const salesmanCode = params.get("code");
 
       if (!salesmanCode) {
-        console.log("ℹ️ Không có salesman_code trong URL");
+        console.log("ℹ️ Không có code trong URL");
         return;
       }
 
-      const salesman = salesmen.find((sm) => sm.salesman_code === salesmanCode);
+      const salesman = salesmen.find((sm) => sm.code === salesmanCode);
 
       if (!salesman) {
         console.warn(`⚠️ Không tìm thấy salesman với code: ${salesmanCode}`);
@@ -106,10 +104,17 @@ export default function App() {
         return;
       }
 
+      if (!salesman.lat || !salesman.long) {
+        alert(`Nhân viên ${salesman.name} không có tọa độ`);
+        return;
+      }
+
+      const coords: [number, number] = [parseFloat(salesman.long), parseFloat(salesman.lat)];
+
       console.log(`✈️ Đang di chuyển đến vị trí của ${salesman.name} (${salesmanCode})`);
 
       map.flyTo({
-        center: salesman.coords,
+        center: coords,
         speed: 1,
         zoom: 16,
         pitch: 30,
@@ -117,7 +122,7 @@ export default function App() {
           if (t === 1) {
             console.log("✅ Đã di chuyển đến vị trí nhân viên thành công!");
             setTimeout(() => {
-              showSalesmanPopup(salesman, salesman.coords);
+              showSalesmanPopup(salesman, coords);
             }, 500);
           }
           return t;
@@ -171,14 +176,16 @@ export default function App() {
       // ========== VẼ NHÂN VIÊN BÁN HÀNG ==========
       const salesmenGeoJSON = {
         type: "FeatureCollection",
-        features: salesmenData.map((sm) => ({
-          type: "Feature",
-          geometry: {
-            type: "Point",
-            coordinates: sm.coords,
-          },
-          properties: sm,
-        })),
+        features: saleMan
+          .filter((sm) => sm.long && sm.lat) // Chỉ lấy những người có tọa độ
+          .map((sm) => ({
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: [parseFloat(sm.long!), parseFloat(sm.lat!)], // [longitude, latitude]
+            },
+            properties: sm,
+          })),
       };
 
       map.addSource("salesmen", {
@@ -189,11 +196,8 @@ export default function App() {
         clusterRadius: 50,
       });
 
-      // Định nghĩa 4 màu theo visit_status
+      // Tạm thời tất cả nhân viên dùng màu xanh
       const svgVisitedWithOrder = createSVGMarker("#61A340", USER_ICON_SVG);
-      const svgVisitedNoOrder = createSVGMarker("#F01919", USER_ICON_SVG);
-      const svgVisitedClosed = createSVGMarker("#FCEA24", USER_ICON_SVG);
-      const svgNotVisited = createSVGMarker("#949494", USER_ICON_SVG);
 
       // Hàm load image từ SVG
       const loadImageFromSVG = (svg: string, name: string, callback: () => void) => {
@@ -205,83 +209,64 @@ export default function App() {
         img.src = "data:image/svg+xml;base64," + btoa(svg);
       };
 
-      let loadedCount = 0;
       const onAllLoaded = () => {
-        loadedCount++;
-        if (loadedCount === 4) {
-          // === LAYER 1: CLUSTER CIRCLES ===
-          map.addLayer({
-            id: "clusters",
-            type: "circle",
-            source: "salesmen",
-            filter: ["has", "point_count"],
-            paint: {
-              "circle-color": [
-                "step",
-                ["get", "point_count"],
-                "#61A340",
-                10,
-                "#FCEA24",
-                30,
-                "#F01919",
-              ],
-              "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 30, 40],
-              "circle-stroke-width": 2,
-              "circle-stroke-color": "#ffffff",
-              "circle-opacity": 0.9,
-            },
-          });
+        // === LAYER 1: CLUSTER CIRCLES ===
+        map.addLayer({
+          id: "clusters",
+          type: "circle",
+          source: "salesmen",
+          filter: ["has", "point_count"],
+          paint: {
+            "circle-color": [
+              "step",
+              ["get", "point_count"],
+              "#61A340",
+              10,
+              "#FCEA24",
+              30,
+              "#F01919",
+            ],
+            "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 30, 40],
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+            "circle-opacity": 0.9,
+          },
+        });
 
-          // === LAYER 2: CLUSTER COUNT ===
-          map.addLayer({
-            id: "cluster-count",
-            type: "symbol",
-            source: "salesmen",
-            filter: ["has", "point_count"],
-            layout: {
-              "text-field": "{point_count_abbreviated}",
-              "text-size": 12,
-            },
-            paint: {
-              "text-color": "#ffffff",
-            },
-          });
+        // === LAYER 2: CLUSTER COUNT ===
+        map.addLayer({
+          id: "cluster-count",
+          type: "symbol",
+          source: "salesmen",
+          filter: ["has", "point_count"],
+          layout: {
+            "text-field": "{point_count_abbreviated}",
+            "text-size": 12,
+          },
+          paint: {
+            "text-color": "#ffffff",
+          },
+        });
 
-          // === LAYER 3: UNCLUSTERED POINTS ===
-          map.addLayer({
-            id: "salesman-points",
-            type: "symbol",
-            source: "salesmen",
-            filter: ["!", ["has", "point_count"]],
-            layout: {
-              "icon-image": [
-                "match",
-                ["get", "visit_status"],
-                "visited_with_order",
-                "icon-visited-with-order",
-                "visited_no_order",
-                "icon-visited-no-order",
-                "visited_closed",
-                "icon-visited-closed",
-                "not_visited",
-                "icon-not-visited",
-                "icon-not-visited",
-              ],
-              "icon-size": 0.8,
-              "icon-allow-overlap": true,
-              "icon-anchor": "bottom",
-            },
-          });
+        // === LAYER 3: UNCLUSTERED POINTS ===
+        map.addLayer({
+          id: "salesman-points",
+          type: "symbol",
+          source: "salesmen",
+          filter: ["!", ["has", "point_count"]],
+          layout: {
+            "icon-image": "icon-visited-with-order", // Tất cả dùng màu xanh
+            "icon-size": 0.8,
+            "icon-allow-overlap": true,
+            "icon-anchor": "bottom",
+          },
+        });
 
-          console.log("✅ Đã load 4 icons và 3 layers thành công!");
-        }
+        console.log("✅ Đã load icon và 3 layers thành công!");
       };
 
-      // Load 4 icons
+      // Load icon màu xanh cho tất cả nhân viên
       loadImageFromSVG(svgVisitedWithOrder, "icon-visited-with-order", onAllLoaded);
-      loadImageFromSVG(svgVisitedNoOrder, "icon-visited-no-order", onAllLoaded);
-      loadImageFromSVG(svgVisitedClosed, "icon-visited-closed", onAllLoaded);
-      loadImageFromSVG(svgNotVisited, "icon-not-visited", onAllLoaded);
 
       // Click vào nhân viên → hiện popup
       map.on("click", "salesman-points", (e: any) => {
@@ -321,16 +306,16 @@ export default function App() {
         map.getCanvas().style.cursor = "";
       });
 
-      console.log("✅ Đã vẽ", salesmenData.length, "nhân viên lên bản đồ");
+      console.log("✅ Đã vẽ", saleMan.length, "nhân viên lên bản đồ");
 
       // Xử lý URL parameters
-      flyToSalesman(salesmenData);
+      flyToSalesman(saleMan);
     });
 
     return () => {
       map.remove();
     };
-  }, []);
+  }, [saleMan]);
 
   return (
     <>
