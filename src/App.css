@@ -1,0 +1,94 @@
+/* Map Legend */
+.map-legend {
+      position: absolute;
+      bottom: 30px;
+      right: 10px;
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      font-family: Arial, sans-serif;
+      z-index: 1;
+      min-width: 220px;
+    }
+    
+    .map-legend h4 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      font-weight: bold;
+      color: #333;
+    }
+    
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    
+    .legend-item:last-child {
+      margin-bottom: 0;
+    }
+    
+    .legend-color {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      margin-right: 10px;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    
+    .legend-color.visited-order {
+      background-color: #61A340;
+    }
+    
+    .legend-color.visited-no-order {
+      background-color: #F01919;
+    }
+    
+    .legend-color.visited-closed {
+      background-color: #FCEA24;
+    }
+    
+    .legend-color.not-visited {
+      background-color: #949494;
+    }
+    
+    .legend-text {
+      font-size: 12px;
+      color: #555;
+    }
+    
+    /* Salesman Popup */
+    .salesman-popup {
+      font-family: Arial, sans-serif;
+    }
+    
+    .salesman-name {
+      font-size: 16px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #61A340;
+    }
+    
+    .salesman-popup ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .salesman-popup li {
+      padding: 5px 0;
+      font-size: 13px;
+      color: #555;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .salesman-popup li:last-child {
+      border-bottom: none;
+    }
+    
+    .salesman-popup strong {
+      color: #333;
+    }
