@@ -258,7 +258,7 @@ export default function App() {
       container: mapContainer.current!,
       style: "https://tiles.goong.io/assets/goong_map_web.json",
       center: [106.72055776537006, 10.803239881310812],
-      zoom: 12,
+      zoom: 13,
     });
 
     mapRef.current = map;

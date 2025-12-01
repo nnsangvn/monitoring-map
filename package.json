@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@goongmaps/goong-js": "^1.0.9",
-    "@goongmaps/goong-map-react": "^1.1.2",
     "@types/nprogress": "^0.2.3",
     "axios": "^1.13.2",
     "nprogress": "^0.2.0",
@@ -35,7 +34,7 @@
     "typescript-eslint": "^8.46.4",
     "vite": "npm:rolldown-vite@7.2.5"
   },
-  "resolutions": {
+  "overrides": {
     "vite": "npm:rolldown-vite@7.2.5"
   }
 }
