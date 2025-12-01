@@ -1,6 +1,5 @@
 import "@goongmaps/goong-js/dist/goong-js.css";
 import { useEffect, useRef, useState } from "react";
-// import salesmenData from "./data/saleman.json";
 import "./App.css";
 import { fetchSaleMan } from "./service/api.ts";
 import type { SalesMan } from "./types/api";
@@ -8,10 +7,37 @@ import type { SalesMan } from "./types/api";
 const GOONG_MAPTILES_KEY = import.meta.env.VITE_GOONG_MAPTILES_KEY;
 
 // SVG icon cho user
-const USER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <circle cx="12" cy="8" r="5"/>
-  <path d="M20 21a8 8 0 1 0-16 0"/>
-</svg>`;
+const USER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="6" r="4"/><path d="M20 17.5c0 2.485 0 4.5-8 4.5s-8-2.015-8-4.5S7.582 13 12 13s8 2.015 8 4.5Z"/></g></svg>`;
+
+// Hàm tạo icon nhân viên đẹp (có bóng, mũi tên, dễ đổi màu)
+const createSalesmanIcon = (bgColor: string): string => {
+  return `
+<svg width="44" height="56" viewBox="0 0 44 56" xmlns="http://www.w3.org/2000/svg">
+  <!-- Bóng đổ nhẹ -->
+  <ellipse cx="22" cy="50" rx="16" ry="5" fill="rgba(0,0,0,0.25)"/>
+  
+  <!-- Vòng tròn chính + viền trắng -->
+  <circle cx="22" cy="20" r="17" fill="${bgColor}" stroke="#ffffff" stroke-width="4"/>
+  
+  <!-- Icon người (màu trắng) -->
+  <g transform="translate(14,12)" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="8" cy="4" r="4"/>
+    <path d="M16 16c0 2.5-8 5.5-8 5.5s-8-3-8-5.5S3.5 11 8 11s8 2.5 8 5.5Z"/>
+  </g>
+  
+  <!-- Mũi tên nhọn bên dưới -->
+  <path d="M22 38 L13 52 L31 52 Z" fill="${bgColor}" stroke="#ffffff" stroke-width="3"/>
+</svg>
+  `.trim();
+};
+
+// 4 icon theo trạng thái
+const ICONS = {
+  hasOrder: createSalesmanIcon("#27AE60"), // Xanh lá đậm - Có đơn hàng
+  visitedOnly: createSalesmanIcon("#F39C12"), // Cam - Ghé thăm, không đơn
+  closed: createSalesmanIcon("#E74C3C"), // Đỏ - Cửa hàng đóng cửa
+  notVisited: createSalesmanIcon("#95A5A6"), // Xám - Chưa ghé
+};
 
 export default function App() {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -23,7 +49,6 @@ export default function App() {
   useEffect(() => {
     const loadSalesmen = async () => {
       const res = await fetchSaleMan();
-      console.log("🚀 ~ loadSalesmen ~ res:", JSON.stringify(res, null, 2));
       if (res.data) {
         setSaleMan(res.data);
       }
@@ -40,12 +65,13 @@ export default function App() {
   useEffect(() => {
     if (!mapContainer.current) return;
 
-    (window as any).goongjs.accessToken = GOONG_MAPTILES_KEY;
+    window.goongjs.accessToken = GOONG_MAPTILES_KEY;
 
-    const map = new (window as any).goongjs.Map({
+    const map = new window.goongjs.Map({
       container: mapContainer.current!,
       // style: "https://tiles.goong.io/assets/navigation_day.json",
       style: "https://tiles.goong.io/assets/goong_map_web.json",
+      // style: "https://tiles.goong.io/assets/goong_map_light.json",
       center: [106.72055776537006, 10.803239881310812],
       zoom: 16,
     });
@@ -53,15 +79,11 @@ export default function App() {
     mapRef.current = map;
 
     // ========== HÀM HIỂN THỊ POPUP ==========
+    // Popup
     const showSalesmanPopup = (salesman: SalesMan, coords: [number, number]) => {
-      const formatMoney = (amount: number) => {
-        return new Intl.NumberFormat("vi-VN", {
-          style: "currency",
-          currency: "VND",
-        }).format(amount);
-      };
-
-      const popupHTML = `
+      const formatMoney = (n: number) =>
+        new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
+      const html = `
         <div class="salesman-popup">
           <div class="salesman-name">${salesman.name}</div>
           <ul>
@@ -70,37 +92,38 @@ export default function App() {
             <li><strong>Doanh số tháng:</strong> ${formatMoney(salesman.total_sale)}</li>
             <li><strong>Doanh số ngày:</strong> ${formatMoney(salesman.total_sale_completed)}</li>
             <li><strong>Đã viếng thăm:</strong> ${salesman.total_visit_day} cửa hàng</li>
-            <li><strong>Đơn hàng hôm nay:</strong> ${salesman.order_count_day} đơn</li>
+            <li><strong>Đơn hôm nay:</strong> ${salesman.order_count_day} đơn</li>
           </ul>
-        </div>
-      `;
-
-      new (window as any).goongjs.Popup({
-        offset: 25,
-        closeButton: true,
-        closeOnClick: true,
-        maxWidth: "350px",
-      })
+        </div>`;
+      new window.goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
         .setLngLat(coords)
-        .setHTML(popupHTML)
+        .setHTML(html)
         .addTo(map);
+    };
+
+    // Xác định icon theo trạng thái
+    const getIconName = (sm: SalesMan): string => {
+      if (sm.order_count_day > 0) return "icon-has-order";
+      if (sm.total_visit_day > 0) return "icon-visited-only";
+      if (sm.is_online === 0) return "icon-closed";
+      return "icon-not-visited";
     };
 
     // ========== HÀM FLY TO SALESMAN ==========
     const flyToSalesman = (salesmen: SalesMan[]) => {
       const params = new URLSearchParams(window.location.search);
-      const salesmanCode = params.get("code");
+      const parentCode = params.get("parent_code");
 
-      if (!salesmanCode) {
-        console.log("ℹ️ Không có code trong URL");
+      if (!parentCode) {
+        console.log("ℹ️ Không có parent_code trong URL");
         return;
       }
 
-      const salesman = salesmen.find((sm) => sm.code === salesmanCode);
+      const salesman = salesmen.find((sm) => sm.code === parentCode); // Tìm theo code nhưng dùng parentCode từ URL
 
       if (!salesman) {
-        console.warn(`⚠️ Không tìm thấy salesman với code: ${salesmanCode}`);
-        alert(`Không tìm thấy nhân viên với mã: ${salesmanCode}`);
+        console.warn(`⚠️ Không tìm thấy salesman với code: ${parentCode}`);
+        alert(`Không tìm thấy nhân viên với mã: ${parentCode}`);
         return;
       }
 
@@ -111,7 +134,7 @@ export default function App() {
 
       const coords: [number, number] = [parseFloat(salesman.long), parseFloat(salesman.lat)];
 
-      console.log(`✈️ Đang di chuyển đến vị trí của ${salesman.name} (${salesmanCode})`);
+      console.log(`✈️ Đang di chuyển đến vị trí của ${salesman.name} (${parentCode})`);
 
       map.flyTo({
         center: coords,
@@ -142,9 +165,31 @@ export default function App() {
     };
 
     map.on("load", () => {
+      // TẮT POI + NHÃN KHÔNG CẦN, NHƯNG GIỮ LẠI TÊN ĐƯỜNG
+      map.getStyle().layers.forEach((layer: any) => {
+        const id = layer.id;
+
+        // Chỉ tắt các layer symbol mà KHÔNG PHẢI là:
+        // - layer của bạn (salesman, cluster)
+        // - layer tên đường (road-label, road-number-shield, v.v.)
+        if (
+          layer.type === "symbol" &&
+          !id.startsWith("salesman") &&
+          !id.startsWith("cluster") &&
+          // Danh sách các layer tên đường cần GIỮ LẠI
+          !id.includes("road-label") &&
+          !id.includes("road-number") &&
+          !id.includes("motorway-shield") &&
+          !id.includes("trunk-shield") &&
+          !id.includes("street")
+        ) {
+          map.setLayoutProperty(id, "visibility", "none");
+        }
+      });
+
       // === 1. NÚT ZOOM + / − ===
       map.addControl(
-        new (window as any).goongjs.NavigationControl({
+        new window.goongjs.NavigationControl({
           showCompass: false,
           showZoom: true,
           visualizePitch: false,
@@ -154,7 +199,7 @@ export default function App() {
 
       // === 2. NÚT LA BÀN (Compass) ===
       map.addControl(
-        new (window as any).goongjs.NavigationControl({
+        new window.goongjs.NavigationControl({
           showZoom: false,
           showCompass: true,
           visualizePitch: false,
@@ -164,7 +209,7 @@ export default function App() {
 
       // === 3. NÚT ĐỊNH VỊ HIỆN TẠI ===
       map.addControl(
-        new (window as any).goongjs.GeolocateControl({
+        new window.goongjs.GeolocateControl({
           positionOptions: { enableHighAccuracy: true },
           trackUserLocation: true,
           showAccuracyCircle: true,
@@ -311,6 +356,11 @@ export default function App() {
       // Xử lý URL parameters
       flyToSalesman(saleMan);
     });
+
+    // // Gọi flyToSalesman sau khi map đã load VÀ saleMan có dữ liệu
+    // if (saleMan.length > 0 && mapRef.current) {
+    //   flyToSalesman(saleMan);
+    // }
 
     return () => {
       map.remove();

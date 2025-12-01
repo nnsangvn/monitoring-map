@@ -1,4 +1,9 @@
 {
+  "compilerOptions": {
+    // ... các options cũ
+    "typeRoots": ["./node_modules/@types", "./src/types"],  // Thêm dòng này
+    "types": ["goong"]  // Thêm dòng này
+  },
   "files": [],
   "references": [
     { "path": "./tsconfig.app.json" },
