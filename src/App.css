@@ -137,15 +137,6 @@
   max-width: 350px;
 }
 
-.salesman-name {
-  font-size: 16px;
-  font-weight: bold;
-  color: #333;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #61A340;
-  word-wrap: break-word;
-}
 
 .salesman-popup ul {
   list-style: none;
@@ -155,9 +146,8 @@
 
 .salesman-popup li {
   padding: 5px 0;
-  font-size: 13px;
+  font-size: 14px;
   color: #555;
-  border-bottom: 1px solid #eee;
   word-wrap: break-word;
 }
 

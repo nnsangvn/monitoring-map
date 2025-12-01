@@ -7,37 +7,7 @@ import type { SalesMan } from "./types/api";
 const GOONG_MAPTILES_KEY = import.meta.env.VITE_GOONG_MAPTILES_KEY;
 
 // SVG icon cho user
-const USER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="6" r="4"/><path d="M20 17.5c0 2.485 0 4.5-8 4.5s-8-2.015-8-4.5S7.582 13 12 13s8 2.015 8 4.5Z"/></g></svg>`;
-
-// Hàm tạo icon nhân viên đẹp (có bóng, mũi tên, dễ đổi màu) - để dùng sau
-// const createSalesmanIcon = (bgColor: string): string => {
-//   return `
-// <svg width="44" height="56" viewBox="0 0 44 56" xmlns="http://www.w3.org/2000/svg">
-//   <!-- Bóng đổ nhẹ -->
-//   <ellipse cx="22" cy="50" rx="16" ry="5" fill="rgba(0,0,0,0.25)"/>
-//
-//   <!-- Vòng tròn chính + viền trắng -->
-//   <circle cx="22" cy="20" r="17" fill="${bgColor}" stroke="#ffffff" stroke-width="4"/>
-//
-//   <!-- Icon người (màu trắng) -->
-//   <g transform="translate(14,12)" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-//     <circle cx="8" cy="4" r="4"/>
-//     <path d="M16 16c0 2.5-8 5.5-8 5.5s-8-3-8-5.5S3.5 11 8 11s8 2.5 8 5.5Z"/>
-//   </g>
-//
-//   <!-- Mũi tên nhọn bên dưới -->
-//   <path d="M22 38 L13 52 L31 52 Z" fill="${bgColor}" stroke="#ffffff" stroke-width="3"/>
-// </svg>
-//   `.trim();
-// };
-
-// 4 icon theo trạng thái (để dùng sau)
-// const ICONS = {
-//   hasOrder: createSalesmanIcon("#27AE60"), // Xanh lá đậm - Có đơn hàng
-//   visitedOnly: createSalesmanIcon("#F39C12"), // Cam - Ghé thăm, không đơn
-//   closed: createSalesmanIcon("#E74C3C"), // Đỏ - Cửa hàng đóng cửa
-//   notVisited: createSalesmanIcon("#95A5A6"), // Xám - Chưa ghé
-// };
+const USER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="12" cy="14" r="16" fill="white"/><g fill="none" stroke="#61A340" stroke-width="1.5"><circle fill="none" cx="12" cy="6" r="4"/><path d="M20 17.5c0 2.485 0 4.5-8 4.5s-8-2.015-8-4.5S7.582 13 12 13s8 2.015 8 4.5Z"/></g></svg>`;
 
 export default function App() {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -65,16 +35,14 @@ export default function App() {
   // ========== HÀM HIỂN THỊ POPUP ==========
   const showSalesmanPopup = useCallback(
     (map: any, salesman: SalesMan, coords: [number, number]) => {
-      const formatMoney = (n: number) =>
-        new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
       const html = `
       <div class="salesman-popup">
-        <div class="salesman-name">${salesman.name}</div>
         <ul>
-          <li><strong>Mã NV:</strong> ${salesman.code}</li>
+          <li> <strong>${salesman.name}</strong> </li>
+          <li><strong>Code:</strong> ${salesman.code}</li>
           <li><strong>Thiết bị:</strong> ${salesman.device_name || "N/A"}</li>
-          <li><strong>Doanh số tháng:</strong> ${formatMoney(salesman.total_sale)}</li>
-          <li><strong>Doanh số ngày:</strong> ${formatMoney(salesman.total_sale_completed)}</li>
+          <li><strong>Doanh số tháng:</strong> ${salesman.total_sale}</li>
+          <li><strong>Doanh số ngày:</strong> ${salesman.total_sale_completed}</li>
           <li><strong>Đã viếng thăm:</strong> ${salesman.total_visit_day} cửa hàng</li>
           <li><strong>Đơn hôm nay:</strong> ${salesman.order_count_day} đơn</li>
         </ul>
@@ -258,7 +226,7 @@ export default function App() {
       container: mapContainer.current!,
       style: "https://tiles.goong.io/assets/goong_map_web.json",
       center: [106.72055776537006, 10.803239881310812],
-      zoom: 13,
+      zoom: 16,
     });
 
     mapRef.current = map;
