@@ -1,5 +1,5 @@
 import "@goongmaps/goong-js/dist/goong-js.css";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 import { fetchSaleMan } from "./service/api.ts";
 import type { SalesMan } from "./types/api";
@@ -9,35 +9,35 @@ const GOONG_MAPTILES_KEY = import.meta.env.VITE_GOONG_MAPTILES_KEY;
 // SVG icon cho user
 const USER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="6" r="4"/><path d="M20 17.5c0 2.485 0 4.5-8 4.5s-8-2.015-8-4.5S7.582 13 12 13s8 2.015 8 4.5Z"/></g></svg>`;
 
-// Hàm tạo icon nhân viên đẹp (có bóng, mũi tên, dễ đổi màu)
-const createSalesmanIcon = (bgColor: string): string => {
-  return `
-<svg width="44" height="56" viewBox="0 0 44 56" xmlns="http://www.w3.org/2000/svg">
-  <!-- Bóng đổ nhẹ -->
-  <ellipse cx="22" cy="50" rx="16" ry="5" fill="rgba(0,0,0,0.25)"/>
-  
-  <!-- Vòng tròn chính + viền trắng -->
-  <circle cx="22" cy="20" r="17" fill="${bgColor}" stroke="#ffffff" stroke-width="4"/>
-  
-  <!-- Icon người (màu trắng) -->
-  <g transform="translate(14,12)" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="8" cy="4" r="4"/>
-    <path d="M16 16c0 2.5-8 5.5-8 5.5s-8-3-8-5.5S3.5 11 8 11s8 2.5 8 5.5Z"/>
-  </g>
-  
-  <!-- Mũi tên nhọn bên dưới -->
-  <path d="M22 38 L13 52 L31 52 Z" fill="${bgColor}" stroke="#ffffff" stroke-width="3"/>
-</svg>
-  `.trim();
-};
+// Hàm tạo icon nhân viên đẹp (có bóng, mũi tên, dễ đổi màu) - để dùng sau
+// const createSalesmanIcon = (bgColor: string): string => {
+//   return `
+// <svg width="44" height="56" viewBox="0 0 44 56" xmlns="http://www.w3.org/2000/svg">
+//   <!-- Bóng đổ nhẹ -->
+//   <ellipse cx="22" cy="50" rx="16" ry="5" fill="rgba(0,0,0,0.25)"/>
+//
+//   <!-- Vòng tròn chính + viền trắng -->
+//   <circle cx="22" cy="20" r="17" fill="${bgColor}" stroke="#ffffff" stroke-width="4"/>
+//
+//   <!-- Icon người (màu trắng) -->
+//   <g transform="translate(14,12)" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+//     <circle cx="8" cy="4" r="4"/>
+//     <path d="M16 16c0 2.5-8 5.5-8 5.5s-8-3-8-5.5S3.5 11 8 11s8 2.5 8 5.5Z"/>
+//   </g>
+//
+//   <!-- Mũi tên nhọn bên dưới -->
+//   <path d="M22 38 L13 52 L31 52 Z" fill="${bgColor}" stroke="#ffffff" stroke-width="3"/>
+// </svg>
+//   `.trim();
+// };
 
-// 4 icon theo trạng thái
-const ICONS = {
-  hasOrder: createSalesmanIcon("#27AE60"), // Xanh lá đậm - Có đơn hàng
-  visitedOnly: createSalesmanIcon("#F39C12"), // Cam - Ghé thăm, không đơn
-  closed: createSalesmanIcon("#E74C3C"), // Đỏ - Cửa hàng đóng cửa
-  notVisited: createSalesmanIcon("#95A5A6"), // Xám - Chưa ghé
-};
+// 4 icon theo trạng thái (để dùng sau)
+// const ICONS = {
+//   hasOrder: createSalesmanIcon("#27AE60"), // Xanh lá đậm - Có đơn hàng
+//   visitedOnly: createSalesmanIcon("#F39C12"), // Cam - Ghé thăm, không đơn
+//   closed: createSalesmanIcon("#E74C3C"), // Đỏ - Cửa hàng đóng cửa
+//   notVisited: createSalesmanIcon("#95A5A6"), // Xám - Chưa ghé
+// };
 
 export default function App() {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -62,55 +62,34 @@ export default function App() {
     console.log("🚀 ~ saleMan length:", saleMan.length);
   }, [saleMan]);
 
-  useEffect(() => {
-    if (!mapContainer.current) return;
-
-    window.goongjs.accessToken = GOONG_MAPTILES_KEY;
-
-    const map = new window.goongjs.Map({
-      container: mapContainer.current!,
-      // style: "https://tiles.goong.io/assets/navigation_day.json",
-      style: "https://tiles.goong.io/assets/goong_map_web.json",
-      // style: "https://tiles.goong.io/assets/goong_map_light.json",
-      center: [106.72055776537006, 10.803239881310812],
-      zoom: 16,
-    });
-
-    mapRef.current = map;
-
-    // ========== HÀM HIỂN THỊ POPUP ==========
-    // Popup
-    const showSalesmanPopup = (salesman: SalesMan, coords: [number, number]) => {
+  // ========== HÀM HIỂN THỊ POPUP ==========
+  const showSalesmanPopup = useCallback(
+    (map: any, salesman: SalesMan, coords: [number, number]) => {
       const formatMoney = (n: number) =>
         new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
       const html = `
-        <div class="salesman-popup">
-          <div class="salesman-name">${salesman.name}</div>
-          <ul>
-            <li><strong>Mã NV:</strong> ${salesman.code}</li>
-            <li><strong>Thiết bị:</strong> ${salesman.device_name || "N/A"}</li>
-            <li><strong>Doanh số tháng:</strong> ${formatMoney(salesman.total_sale)}</li>
-            <li><strong>Doanh số ngày:</strong> ${formatMoney(salesman.total_sale_completed)}</li>
-            <li><strong>Đã viếng thăm:</strong> ${salesman.total_visit_day} cửa hàng</li>
-            <li><strong>Đơn hôm nay:</strong> ${salesman.order_count_day} đơn</li>
-          </ul>
-        </div>`;
+      <div class="salesman-popup">
+        <div class="salesman-name">${salesman.name}</div>
+        <ul>
+          <li><strong>Mã NV:</strong> ${salesman.code}</li>
+          <li><strong>Thiết bị:</strong> ${salesman.device_name || "N/A"}</li>
+          <li><strong>Doanh số tháng:</strong> ${formatMoney(salesman.total_sale)}</li>
+          <li><strong>Doanh số ngày:</strong> ${formatMoney(salesman.total_sale_completed)}</li>
+          <li><strong>Đã viếng thăm:</strong> ${salesman.total_visit_day} cửa hàng</li>
+          <li><strong>Đơn hôm nay:</strong> ${salesman.order_count_day} đơn</li>
+        </ul>
+      </div>`;
       new window.goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
         .setLngLat(coords)
         .setHTML(html)
         .addTo(map);
-    };
+    },
+    []
+  );
 
-    // Xác định icon theo trạng thái
-    const getIconName = (sm: SalesMan): string => {
-      if (sm.order_count_day > 0) return "icon-has-order";
-      if (sm.total_visit_day > 0) return "icon-visited-only";
-      if (sm.is_online === 0) return "icon-closed";
-      return "icon-not-visited";
-    };
-
-    // ========== HÀM FLY TO SALESMAN ==========
-    const flyToSalesman = (salesmen: SalesMan[]) => {
+  // ========== HÀM FLY TO SALESMAN ==========
+  const flyToSalesman = useCallback(
+    (map: any, salesmen: SalesMan[]) => {
       const params = new URLSearchParams(window.location.search);
       const parentCode = params.get("parent_code");
 
@@ -119,7 +98,7 @@ export default function App() {
         return;
       }
 
-      const salesman = salesmen.find((sm) => sm.code === parentCode); // Tìm theo code nhưng dùng parentCode từ URL
+      const salesman = salesmen.find((sm) => sm.code === parentCode);
 
       if (!salesman) {
         console.warn(`⚠️ Không tìm thấy salesman với code: ${parentCode}`);
@@ -145,38 +124,153 @@ export default function App() {
           if (t === 1) {
             console.log("✅ Đã di chuyển đến vị trí nhân viên thành công!");
             setTimeout(() => {
-              showSalesmanPopup(salesman, coords);
+              showSalesmanPopup(map, salesman, coords);
             }, 500);
           }
           return t;
         },
       });
+    },
+    [showSalesmanPopup]
+  );
+
+  // ========== CREATE SVG MARKER ==========
+  const createSVGMarker = (color: string, iconSvg: string) => {
+    const coloredIcon = iconSvg.replace(/currentColor/g, "white");
+    return `<svg width="32" height="48" viewBox="0 0 48 64" xmlns="http://www.w3.org/2000/svg">
+      <path d="M24 0C10.745 0 0 10.745 0 24c0 18.273 24 40 24 40s24-21.727 24-40C48 10.745 37.255 0 24 0z" fill="${color}"/>
+      <g transform="translate(12, 9) scale(1)">
+        ${coloredIcon.replace(/<svg[^>]*>|<\/svg>/g, "")}
+      </g>
+    </svg>`;
+  };
+
+  // ========== HÀM CẬP NHẬT DỮ LIỆU NHÂN VIÊN ==========
+  const updateSalesmenData = useCallback((map: any, salesmen: SalesMan[]) => {
+    // Xóa source và layers cũ nếu có
+    if (map.getSource("salesmen")) {
+      if (map.getLayer("salesman-points")) map.removeLayer("salesman-points");
+      if (map.getLayer("cluster-count")) map.removeLayer("cluster-count");
+      if (map.getLayer("clusters")) map.removeLayer("clusters");
+      map.removeSource("salesmen");
+    }
+
+    // Tạo GeoJSON mới
+    const salesmenGeoJSON = {
+      type: "FeatureCollection",
+      features: salesmen
+        .filter((sm) => sm.long && sm.lat)
+        .map((sm) => ({
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [parseFloat(sm.long!), parseFloat(sm.lat!)],
+          },
+          properties: sm,
+        })),
     };
 
-    // ========== CREATE SVG MARKER ==========
-    const createSVGMarker = (color: string, iconSvg: string) => {
-      const coloredIcon = iconSvg.replace(/currentColor/g, "white");
-      return `<svg width="32" height="48" viewBox="0 0 48 64" xmlns="http://www.w3.org/2000/svg">
-        <path d="M24 0C10.745 0 0 10.745 0 24c0 18.273 24 40 24 40s24-21.727 24-40C48 10.745 37.255 0 24 0z" fill="${color}"/>
-        <g transform="translate(12, 9) scale(1)">
-          ${coloredIcon.replace(/<svg[^>]*>|<\/svg>/g, "")}
-        </g>
-      </svg>`;
+    // Thêm source mới
+    map.addSource("salesmen", {
+      type: "geojson",
+      data: salesmenGeoJSON,
+      cluster: true,
+      clusterMaxZoom: 14,
+      clusterRadius: 50,
+    });
+
+    // Tạm thời tất cả nhân viên dùng màu xanh
+    const svgVisitedWithOrder = createSVGMarker("#61A340", USER_ICON_SVG);
+
+    // Hàm load image từ SVG
+    const loadImageFromSVG = (svg: string, name: string, callback: () => void) => {
+      const img = new Image();
+      img.onload = () => {
+        map.addImage(name, img);
+        callback();
+      };
+      img.src = "data:image/svg+xml;base64," + btoa(svg);
     };
+
+    const onAllLoaded = () => {
+      // === LAYER 1: CLUSTER CIRCLES ===
+      map.addLayer({
+        id: "clusters",
+        type: "circle",
+        source: "salesmen",
+        filter: ["has", "point_count"],
+        paint: {
+          "circle-color": ["step", ["get", "point_count"], "#61A340", 10, "#FCEA24", 30, "#F01919"],
+          "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 30, 40],
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#ffffff",
+          "circle-opacity": 0.9,
+        },
+      });
+
+      // === LAYER 2: CLUSTER COUNT ===
+      map.addLayer({
+        id: "cluster-count",
+        type: "symbol",
+        source: "salesmen",
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": "{point_count_abbreviated}",
+          "text-size": 12,
+        },
+        paint: {
+          "text-color": "#ffffff",
+        },
+      });
+
+      // === LAYER 3: UNCLUSTERED POINTS ===
+      map.addLayer({
+        id: "salesman-points",
+        type: "symbol",
+        source: "salesmen",
+        filter: ["!", ["has", "point_count"]],
+        layout: {
+          "icon-image": "icon-visited-with-order",
+          "icon-size": 0.8,
+          "icon-allow-overlap": true,
+          "icon-anchor": "bottom",
+        },
+      });
+
+      console.log("✅ Đã load icon và 3 layers thành công!");
+      console.log("✅ Đã vẽ", salesmen.length, "nhân viên lên bản đồ");
+    };
+
+    // Load icon màu xanh cho tất cả nhân viên
+    loadImageFromSVG(svgVisitedWithOrder, "icon-visited-with-order", onAllLoaded);
+  }, []);
+
+  // ========== TẠO MAP (CHỈ 1 LẦN) ==========
+  useEffect(() => {
+    if (!mapContainer.current) return;
+
+    // Set accessToken trước khi tạo map
+    if (GOONG_MAPTILES_KEY) {
+      (window.goongjs as any).accessToken = GOONG_MAPTILES_KEY;
+    }
+
+    const map = new window.goongjs.Map({
+      container: mapContainer.current!,
+      style: "https://tiles.goong.io/assets/goong_map_web.json",
+      center: [106.72055776537006, 10.803239881310812],
+      zoom: 12,
+    });
+
+    mapRef.current = map;
 
     map.on("load", () => {
       // TẮT POI + NHÃN KHÔNG CẦN, NHƯNG GIỮ LẠI TÊN ĐƯỜNG
       map.getStyle().layers.forEach((layer: any) => {
         const id = layer.id;
-
-        // Chỉ tắt các layer symbol mà KHÔNG PHẢI là:
-        // - layer của bạn (salesman, cluster)
-        // - layer tên đường (road-label, road-number-shield, v.v.)
         if (
           layer.type === "symbol" &&
           !id.startsWith("salesman") &&
           !id.startsWith("cluster") &&
-          // Danh sách các layer tên đường cần GIỮ LẠI
           !id.includes("road-label") &&
           !id.includes("road-number") &&
           !id.includes("motorway-shield") &&
@@ -218,106 +312,12 @@ export default function App() {
         "top-right"
       );
 
-      // ========== VẼ NHÂN VIÊN BÁN HÀNG ==========
-      const salesmenGeoJSON = {
-        type: "FeatureCollection",
-        features: saleMan
-          .filter((sm) => sm.long && sm.lat) // Chỉ lấy những người có tọa độ
-          .map((sm) => ({
-            type: "Feature",
-            geometry: {
-              type: "Point",
-              coordinates: [parseFloat(sm.long!), parseFloat(sm.lat!)], // [longitude, latitude]
-            },
-            properties: sm,
-          })),
-      };
-
-      map.addSource("salesmen", {
-        type: "geojson",
-        data: salesmenGeoJSON,
-        cluster: true,
-        clusterMaxZoom: 14,
-        clusterRadius: 50,
-      });
-
-      // Tạm thời tất cả nhân viên dùng màu xanh
-      const svgVisitedWithOrder = createSVGMarker("#61A340", USER_ICON_SVG);
-
-      // Hàm load image từ SVG
-      const loadImageFromSVG = (svg: string, name: string, callback: () => void) => {
-        const img = new Image();
-        img.onload = () => {
-          map.addImage(name, img);
-          callback();
-        };
-        img.src = "data:image/svg+xml;base64," + btoa(svg);
-      };
-
-      const onAllLoaded = () => {
-        // === LAYER 1: CLUSTER CIRCLES ===
-        map.addLayer({
-          id: "clusters",
-          type: "circle",
-          source: "salesmen",
-          filter: ["has", "point_count"],
-          paint: {
-            "circle-color": [
-              "step",
-              ["get", "point_count"],
-              "#61A340",
-              10,
-              "#FCEA24",
-              30,
-              "#F01919",
-            ],
-            "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 30, 40],
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#ffffff",
-            "circle-opacity": 0.9,
-          },
-        });
-
-        // === LAYER 2: CLUSTER COUNT ===
-        map.addLayer({
-          id: "cluster-count",
-          type: "symbol",
-          source: "salesmen",
-          filter: ["has", "point_count"],
-          layout: {
-            "text-field": "{point_count_abbreviated}",
-            "text-size": 12,
-          },
-          paint: {
-            "text-color": "#ffffff",
-          },
-        });
-
-        // === LAYER 3: UNCLUSTERED POINTS ===
-        map.addLayer({
-          id: "salesman-points",
-          type: "symbol",
-          source: "salesmen",
-          filter: ["!", ["has", "point_count"]],
-          layout: {
-            "icon-image": "icon-visited-with-order", // Tất cả dùng màu xanh
-            "icon-size": 0.8,
-            "icon-allow-overlap": true,
-            "icon-anchor": "bottom",
-          },
-        });
-
-        console.log("✅ Đã load icon và 3 layers thành công!");
-      };
-
-      // Load icon màu xanh cho tất cả nhân viên
-      loadImageFromSVG(svgVisitedWithOrder, "icon-visited-with-order", onAllLoaded);
-
-      // Click vào nhân viên → hiện popup
+      // Setup event handlers cho click và hover
+      // Click vào nhân viên → hiện popup (sẽ được thêm sau khi có layers)
       map.on("click", "salesman-points", (e: any) => {
         const feature = e.features[0];
         const sm = feature.properties;
-        showSalesmanPopup(sm, feature.geometry.coordinates);
+        showSalesmanPopup(map, sm, feature.geometry.coordinates);
       });
 
       // Hover effect
@@ -351,21 +351,26 @@ export default function App() {
         map.getCanvas().style.cursor = "";
       });
 
-      console.log("✅ Đã vẽ", saleMan.length, "nhân viên lên bản đồ");
-
-      // Xử lý URL parameters
-      flyToSalesman(saleMan);
+      // Nếu đã có dữ liệu saleMan, cập nhật ngay
+      if (saleMan.length > 0) {
+        updateSalesmenData(map, saleMan);
+        flyToSalesman(map, saleMan);
+      }
     });
-
-    // // Gọi flyToSalesman sau khi map đã load VÀ saleMan có dữ liệu
-    // if (saleMan.length > 0 && mapRef.current) {
-    //   flyToSalesman(saleMan);
-    // }
 
     return () => {
       map.remove();
     };
-  }, [saleMan]);
+  }, []); // CHỈ chạy 1 lần khi mount
+
+  // ========== CẬP NHẬT DỮ LIỆU KHI saleMan THAY ĐỔI ==========
+  useEffect(() => {
+    if (!mapRef.current || !mapRef.current.loaded()) return;
+    if (saleMan.length === 0) return;
+
+    updateSalesmenData(mapRef.current, saleMan);
+    flyToSalesman(mapRef.current, saleMan);
+  }, [saleMan, updateSalesmenData, flyToSalesman]);
 
   return (
     <>
