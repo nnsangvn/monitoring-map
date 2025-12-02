@@ -1,20 +1,19 @@
 import "@goongmaps/goong-js/dist/goong-js.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import "./App.css";
-import { fetchSaleMan } from "./service/api.ts";
-import type { SalesMan } from "./types/api";
+import "../App.css";
+import { fetchSaleMan } from "../service/api.ts";
 
 const GOONG_MAPTILES_KEY = import.meta.env.VITE_GOONG_MAPTILES_KEY;
 
 // SVG icon cho user
 const USER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="12" cy="14" r="16" fill="white"/><g fill="none" stroke="#61A340" stroke-width="1.5"><circle fill="none" cx="12" cy="6" r="4"/><path d="M20 17.5c0 2.485 0 4.5-8 4.5s-8-2.015-8-4.5S7.582 13 12 13s8 2.015 8 4.5Z"/></g></svg>`;
 
-export default function App() {
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
+export default function Map() {
+  const mapContainer = useRef(null);
+  const mapRef = useRef(null);
   const [isLegendOpen, setIsLegendOpen] = useState(false);
 
-  const [saleMan, setSaleMan] = useState<SalesMan[]>([]);
+  const [saleMan, setSaleMan] = useState([]);
 
   useEffect(() => {
     const loadSalesmen = async () => {
@@ -33,9 +32,8 @@ export default function App() {
   }, [saleMan]);
 
   // ========== HÀM HIỂN THỊ POPUP ==========
-  const showSalesmanPopup = useCallback(
-    (map: any, salesman: SalesMan, coords: [number, number]) => {
-      const html = `
+  const showSalesmanPopup = useCallback((map, salesman, coords) => {
+    const html = `
       <div class="salesman-popup">
         <ul>
           <li> <strong>${salesman.name}</strong> </li>
@@ -47,17 +45,15 @@ export default function App() {
           <li><strong>Đơn hôm nay:</strong> ${salesman.order_count_day} đơn</li>
         </ul>
       </div>`;
-      new window.goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
-        .setLngLat(coords)
-        .setHTML(html)
-        .addTo(map);
-    },
-    []
-  );
+    new window.goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
+      .setLngLat(coords)
+      .setHTML(html)
+      .addTo(map);
+  }, []);
 
   // ========== HÀM FLY TO SALESMAN ==========
   const flyToSalesman = useCallback(
-    (map: any, salesmen: SalesMan[]) => {
+    (map, salesmen) => {
       const params = new URLSearchParams(window.location.search);
       const parentCode = params.get("parent_code");
 
@@ -79,7 +75,7 @@ export default function App() {
         return;
       }
 
-      const coords: [number, number] = [parseFloat(salesman.long), parseFloat(salesman.lat)];
+      const coords = [parseFloat(salesman.long), parseFloat(salesman.lat)];
 
       console.log(`✈️ Đang di chuyển đến vị trí của ${salesman.name} (${parentCode})`);
 
@@ -88,7 +84,7 @@ export default function App() {
         speed: 1,
         zoom: 16,
         pitch: 30,
-        easing(t: number) {
+        easing(t) {
           if (t === 1) {
             console.log("✅ Đã di chuyển đến vị trí nhân viên thành công!");
             setTimeout(() => {
@@ -103,7 +99,7 @@ export default function App() {
   );
 
   // ========== CREATE SVG MARKER ==========
-  const createSVGMarker = (color: string, iconSvg: string) => {
+  const createSVGMarker = (color, iconSvg) => {
     const coloredIcon = iconSvg.replace(/currentColor/g, "white");
     return `<svg width="32" height="48" viewBox="0 0 48 64" xmlns="http://www.w3.org/2000/svg">
       <path d="M24 0C10.745 0 0 10.745 0 24c0 18.273 24 40 24 40s24-21.727 24-40C48 10.745 37.255 0 24 0z" fill="${color}"/>
@@ -114,7 +110,7 @@ export default function App() {
   };
 
   // ========== HÀM CẬP NHẬT DỮ LIỆU NHÂN VIÊN ==========
-  const updateSalesmenData = useCallback((map: any, salesmen: SalesMan[]) => {
+  const updateSalesmenData = useCallback((map, salesmen) => {
     // Xóa source và layers cũ nếu có
     if (map.getSource("salesmen")) {
       if (map.getLayer("salesman-points")) map.removeLayer("salesman-points");
@@ -132,7 +128,7 @@ export default function App() {
           type: "Feature",
           geometry: {
             type: "Point",
-            coordinates: [parseFloat(sm.long!), parseFloat(sm.lat!)],
+            coordinates: [parseFloat(sm.long), parseFloat(sm.lat)],
           },
           properties: sm,
         })),
@@ -151,7 +147,7 @@ export default function App() {
     const svgVisitedWithOrder = createSVGMarker("#61A340", USER_ICON_SVG);
 
     // Hàm load image từ SVG
-    const loadImageFromSVG = (svg: string, name: string, callback: () => void) => {
+    const loadImageFromSVG = (svg, name, callback) => {
       const img = new Image();
       img.onload = () => {
         map.addImage(name, img);
@@ -219,31 +215,46 @@ export default function App() {
 
     // Set accessToken trước khi tạo map
     if (GOONG_MAPTILES_KEY) {
-      (window.goongjs as any).accessToken = GOONG_MAPTILES_KEY;
+      window.goongjs.accessToken = GOONG_MAPTILES_KEY;
     }
 
     const map = new window.goongjs.Map({
-      container: mapContainer.current!,
+      container: mapContainer.current,
       style: "https://tiles.goong.io/assets/goong_map_web.json",
       center: [106.72055776537006, 10.803239881310812],
-      zoom: 16,
+      zoom: 12,
     });
 
     mapRef.current = map;
 
     map.on("load", () => {
       // TẮT POI + NHÃN KHÔNG CẦN, NHƯNG GIỮ LẠI TÊN ĐƯỜNG
-      map.getStyle().layers.forEach((layer: any) => {
+
+      map.getStyle().layers.forEach((layer) => {
         const id = layer.id;
+        console.log("🚀 ~ id:", id);
+        const type = layer.type;
+        //   console.log("🚀 ~ type:", type);
         if (
           layer.type === "symbol" &&
           !id.startsWith("salesman") &&
           !id.startsWith("cluster") &&
-          !id.includes("road-label") &&
-          !id.includes("road-number") &&
-          !id.includes("motorway-shield") &&
-          !id.includes("trunk-shield") &&
-          !id.includes("street")
+          !id.includes("poi-airport") && // Sân bay
+          !id.includes("water") &&
+          !id.includes("highway-shield-1") && // Quốc Lộ
+          !id.includes("highway-shield-2") && // Tỉnh Lộ
+          !id.includes("highway-name-major") && // Tên đường chính
+          !id.includes("highway-name-medium") && // Tên đường chính
+          !id.includes("road-oneway-spaced-large") &&
+          !id.includes("road-major") &&
+          !id.includes("lake-name_priority_2") &&
+          !id.includes("place-city-capital-vietnam") &&
+          !id.includes("place-city-capital") && // Thủ đô HN
+          !id.includes("place-city1") && // TP trực thuộc TW
+          !id.includes("place-city2") && // Tỉnh
+          !id.includes("place-village") &&
+          !id.includes("lake-name_priority_2") &&
+          !id.includes("ocean")
         ) {
           map.setLayoutProperty(id, "visibility", "none");
         }
@@ -282,7 +293,7 @@ export default function App() {
 
       // Setup event handlers cho click và hover
       // Click vào nhân viên → hiện popup (sẽ được thêm sau khi có layers)
-      map.on("click", "salesman-points", (e: any) => {
+      map.on("click", "salesman-points", (e) => {
         const feature = e.features[0];
         const sm = feature.properties;
         showSalesmanPopup(map, sm, feature.geometry.coordinates);
@@ -298,10 +309,10 @@ export default function App() {
       });
 
       // Click vào cluster → zoom in
-      map.on("click", "clusters", (e: any) => {
+      map.on("click", "clusters", (e) => {
         const features = e.features;
         const clusterId = features[0].properties.cluster_id;
-        map.getSource("salesmen").getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
+        map.getSource("salesmen").getClusterExpansionZoom(clusterId, (err, zoom) => {
           if (err) return;
           map.easeTo({
             center: features[0].geometry.coordinates,
