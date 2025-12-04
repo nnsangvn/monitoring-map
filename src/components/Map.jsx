@@ -1,25 +1,37 @@
 import "@goongmaps/goong-js/dist/goong-js.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
-import { fetchSaleMan } from "../service/api.ts";
+import { direction, fetchSaleMan } from "../service/api.ts";
+import { APP_COLORS } from "../constants/colors.js";
 
 const GOONG_MAPTILES_KEY = import.meta.env.VITE_GOONG_MAPTILES_KEY;
-
+const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY;
 // SVG icon cho user
-const USER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="12" cy="14" r="16" fill="white"/><g fill="none" stroke="#61A340" stroke-width="1.5"><circle fill="none" cx="12" cy="6" r="4"/><path d="M20 17.5c0 2.485 0 4.5-8 4.5s-8-2.015-8-4.5S7.582 13 12 13s8 2.015 8 4.5Z"/></g></svg>`;
+const USER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="12" cy="14" r="16" fill="white"/><g fill="none" stroke="currentColor" stroke-width="1.5"><circle fill="none" cx="12" cy="6" r="4"/><path d="M20 17.5c0 2.485 0 4.5-8 4.5s-8-2.015-8-4.5S7.582 13 12 13s8 2.015 8 4.5Z"/></g></svg>`;
 
 export default function Map() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
-  const [isLegendOpen, setIsLegendOpen] = useState(false);
+  const params = new URLSearchParams(window.location.search);
+  const parentCode = params.get("parent_code");
 
   const [saleMan, setSaleMan] = useState([]);
 
+  // const loadDirection = async () => {
+  //   const res = await direction();
+  //   console.log("🚀 ~ loadDirection ~ res:", res.data);
+  //   // if (res.data) {
+  //   //   console.log("🚀 ~ loadDirection ~ res.data:", res.data);
+  //   // }
+  // };
+
+  // loadDirection();
+
   useEffect(() => {
     const loadSalesmen = async () => {
-      const res = await fetchSaleMan();
-      if (res.data) {
-        setSaleMan(res.data);
+      const res = await fetchSaleMan(parentCode);
+      if (res.data.data) {
+        setSaleMan(res.data.data);
       }
     };
     loadSalesmen();
@@ -27,8 +39,8 @@ export default function Map() {
 
   // Log saleMan khi state thay đổi
   useEffect(() => {
-    console.log("🚀 ~ saleMan state:", saleMan);
-    console.log("🚀 ~ saleMan length:", saleMan.length);
+    // console.log("🚀 ~ saleMan state:", saleMan);
+    // console.log("🚀 ~ saleMan length:", saleMan.length);
   }, [saleMan]);
 
   // ========== HÀM HIỂN THỊ POPUP ==========
@@ -42,21 +54,31 @@ export default function Map() {
           <li><strong>Doanh số tháng:</strong> ${salesman.total_sale}</li>
           <li><strong>Doanh số ngày:</strong> ${salesman.total_sale_completed}</li>
           <li><strong>Đã viếng thăm:</strong> ${salesman.total_visit_day} cửa hàng</li>
+          <li><strong>Chưa viếng thăm:</strong>${salesman.total_not_visit_day} </li>
           <li><strong>Đơn hôm nay:</strong> ${salesman.order_count_day} đơn</li>
         </ul>
+        <button id="route-button" data-code="${salesman.code}">Lộ trình</button>
       </div>`;
-    new window.goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
+    const popup = new window.goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
       .setLngLat(coords)
       .setHTML(html)
       .addTo(map);
+
+    // Thêm event listener cho button sau khi popup được render
+    setTimeout(() => {
+      const routeButton = document.getElementById("route-button");
+      if (routeButton) {
+        routeButton.addEventListener("click", () => {
+          const salemanCode = routeButton.getAttribute("data-code");
+          window.location.href = `/?route=true&saleman_code=${salemanCode}`;
+        });
+      }
+    }, 100);
   }, []);
 
   // ========== HÀM FLY TO SALESMAN ==========
   const flyToSalesman = useCallback(
     (map, salesmen) => {
-      const params = new URLSearchParams(window.location.search);
-      const parentCode = params.get("parent_code");
-
       if (!parentCode) {
         console.log("ℹ️ Không có parent_code trong URL");
         return;
@@ -77,8 +99,6 @@ export default function Map() {
 
       const coords = [parseFloat(salesman.long), parseFloat(salesman.lat)];
 
-      console.log(`✈️ Đang di chuyển đến vị trí của ${salesman.name} (${parentCode})`);
-
       map.flyTo({
         center: coords,
         speed: 1,
@@ -86,7 +106,6 @@ export default function Map() {
         pitch: 30,
         easing(t) {
           if (t === 1) {
-            console.log("✅ Đã di chuyển đến vị trí nhân viên thành công!");
             setTimeout(() => {
               showSalesmanPopup(map, salesman, coords);
             }, 500);
@@ -100,13 +119,69 @@ export default function Map() {
 
   // ========== CREATE SVG MARKER ==========
   const createSVGMarker = (color, iconSvg) => {
-    const coloredIcon = iconSvg.replace(/currentColor/g, "white");
+    const coloredIcon = iconSvg.replace(/currentColor/g, color);
     return `<svg width="32" height="48" viewBox="0 0 48 64" xmlns="http://www.w3.org/2000/svg">
       <path d="M24 0C10.745 0 0 10.745 0 24c0 18.273 24 40 24 40s24-21.727 24-40C48 10.745 37.255 0 24 0z" fill="${color}"/>
       <g transform="translate(12, 9) scale(1)">
         ${coloredIcon.replace(/<svg[^>]*>|<\/svg>/g, "")}
       </g>
     </svg>`;
+  };
+
+  // ========== CREATE PULSING DOT ==========
+  const createPulsingDot = (color = "rgba(0, 181, 255, 1)") => {
+    const size = 150;
+
+    return {
+      width: size,
+      height: size,
+      data: new Uint8Array(size * size * 4),
+
+      onAdd: function (map) {
+        const canvas = document.createElement("canvas");
+        canvas.width = this.width;
+        canvas.height = this.height;
+        this.context = canvas.getContext("2d");
+        this.map = map;
+      },
+
+      render: function () {
+        const duration = 1000;
+        const t = (performance.now() % duration) / duration;
+
+        const radius = (this.width / 2) * 0.3;
+        const outerRadius = (this.width / 2) * 0.7 * t + radius;
+        const context = this.context;
+
+        // Clear canvas
+        context.clearRect(0, 0, this.width, this.height);
+
+        // Draw outer circle (pulsing effect)
+        context.beginPath();
+        context.arc(this.width / 2, this.height / 2, outerRadius, 0, Math.PI * 2);
+        // Màu ngoài mờ dần
+        const outerColor = color.replace("1)", `${1 - t})`);
+        context.fillStyle = outerColor;
+        context.fill();
+
+        // Draw inner circle (solid)
+        context.beginPath();
+        context.arc(this.width / 2, this.height / 2, radius, 0, Math.PI * 2);
+        context.fillStyle = color;
+        context.strokeStyle = "white";
+        context.lineWidth = 2 + 4 * (1 - t);
+        context.fill();
+        context.stroke();
+
+        // Update image data
+        this.data = context.getImageData(0, 0, this.width, this.height).data;
+
+        // Trigger repaint for animation
+        this.map.triggerRepaint();
+
+        return true;
+      },
+    };
   };
 
   // ========== HÀM CẬP NHẬT DỮ LIỆU NHÂN VIÊN ==========
@@ -130,7 +205,11 @@ export default function Map() {
             type: "Point",
             coordinates: [parseFloat(sm.long), parseFloat(sm.lat)],
           },
-          properties: sm,
+          properties: {
+            ...sm,
+            // TẠO THUỘC TÍNH ĐỂ DỄ DÙNG TRONG CASE (rất quan trọng!)
+            salesmanStatus: sm.is_online === 1 ? "online" : "offline",
+          },
         })),
     };
 
@@ -144,7 +223,10 @@ export default function Map() {
     });
 
     // Tạm thời tất cả nhân viên dùng màu xanh
-    const svgVisitedWithOrder = createSVGMarker("#61A340", USER_ICON_SVG);
+    const saleman_green = createSVGMarker(APP_COLORS.GREEN, USER_ICON_SVG);
+    const saleman_red = createSVGMarker(APP_COLORS.RED, USER_ICON_SVG);
+    const saleman_yellow = createSVGMarker(APP_COLORS.YELLOW, USER_ICON_SVG);
+    const saleman_gray = createSVGMarker(APP_COLORS.GRAY, USER_ICON_SVG);
 
     // Hàm load image từ SVG
     const loadImageFromSVG = (svg, name, callback) => {
@@ -157,6 +239,8 @@ export default function Map() {
     };
 
     const onAllLoaded = () => {
+      if (map.getLayer("clusters")) return;
+
       // === LAYER 1: CLUSTER CIRCLES ===
       map.addLayer({
         id: "clusters",
@@ -187,26 +271,60 @@ export default function Map() {
         },
       });
 
-      // === LAYER 3: UNCLUSTERED POINTS ===
+      // Tạo pulsing dots với màu khác nhau cho online/offline
+      const pulsingDotBlue = createPulsingDot(
+        APP_COLORS.BLUE.replace("rgb", "rgba").replace(")", ", 1)")
+      );
+      const pulsingDotRed = createPulsingDot(
+        APP_COLORS.RED.replace("rgb", "rgba").replace(")", ", 1)")
+      );
+
+      map.addImage("pulsing-dot-blue", pulsingDotBlue, { pixelRatio: 3 });
+      map.addImage("pulsing-dot-red", pulsingDotRed, { pixelRatio: 3 });
+
+      // Layer pulsing dots - PHẢI THÊM TRƯỚC salesman-points
+      map.addLayer({
+        id: "salesman-pulse",
+        type: "symbol",
+        source: "salesmen",
+        filter: [
+          "all",
+          ["!", ["has", "point_count"]], // không phải cluster
+          ["==", ["get", "salesmanStatus"], "online"], // CHỈ khi online
+        ],
+        layout: {
+          "icon-image": "pulsing-dot-blue", // cố định luôn là blue
+          "icon-size": 0.5, // Nhỏ hơn icon chính
+          "icon-allow-overlap": true,
+          "icon-anchor": "center", // Center để pulse ở giữa
+        },
+      });
+
+      // === LAYER 4: SALESMAN POINTS (trên pulsing dots) ===
       map.addLayer({
         id: "salesman-points",
         type: "symbol",
         source: "salesmen",
         filter: ["!", ["has", "point_count"]],
         layout: {
-          "icon-image": "icon-visited-with-order",
+          "icon-image": [
+            "case",
+            ["==", ["get", "salesmanStatus"], "online"],
+            "icon-saleman-green",
+            "icon-saleman-red",
+          ],
           "icon-size": 0.8,
           "icon-allow-overlap": true,
           "icon-anchor": "bottom",
         },
       });
-
-      console.log("✅ Đã load icon và 3 layers thành công!");
-      console.log("✅ Đã vẽ", salesmen.length, "nhân viên lên bản đồ");
     };
 
-    // Load icon màu xanh cho tất cả nhân viên
-    loadImageFromSVG(svgVisitedWithOrder, "icon-visited-with-order", onAllLoaded);
+    // Load icons cho tất cả nhân viên
+    loadImageFromSVG(saleman_green, "icon-saleman-green", onAllLoaded);
+    loadImageFromSVG(saleman_red, "icon-saleman-red", onAllLoaded);
+    loadImageFromSVG(saleman_yellow, "icon-saleman-yellow", onAllLoaded);
+    loadImageFromSVG(saleman_gray, "icon-saleman-gray", onAllLoaded);
   }, []);
 
   // ========== TẠO MAP (CHỈ 1 LẦN) ==========
@@ -228,11 +346,140 @@ export default function Map() {
     mapRef.current = map;
 
     map.on("load", () => {
-      // TẮT POI + NHÃN KHÔNG CẦN, NHƯNG GIỮ LẠI TÊN ĐƯỜNG
+      // // Tìm layer symbol đầu tiên để chèn tuyến đường phía dưới chữ
+      // let firstSymbolId;
+      // const layers = map.getStyle().layers;
+      // for (let i = 0; i < layers.length; i++) {
+      //   if (layers[i].type === "symbol") {
+      //     firstSymbolId = layers[i].id;
+      //     break;
+      //   }
+      // }
 
+      // // Khởi tạo Goong SDK
+      // const goongClient = goongSdk({ accessToken: GOONG_API_KEY });
+
+      // // Tọa độ gốc và đích (bạn có thể thay đổi)
+      // const origin = "10.80167766728457, 106.72081560591285";
+      // const destination = "10.800365395965589, 106.71821713931104";
+      // const waypoints = [
+      //   { coordinates: [10.801663713971633, 106.71895804653684] }, // Điểm 2
+      //   // ... thêm bao nhiêu cũng được (tối đa 25 điểm tổng cộng: origin + waypoints + destination)
+      // ];
+
+      // goongClient.directions
+      //   .getDirections({
+      //     origin: origin,
+      //     destination: destination,
+      //     // waypoints: waypoints,
+      //     vehicle: "car",
+      //   })
+      //   .send()
+      //   .then((response) => {
+      //     const route = response.body.routes[0];
+
+      //     let geojson = {
+      //       type: "Feature",
+      //       properties: {},
+      //       geometry: {
+      //         type: "LineString",
+      //         coordinates: [],
+      //       },
+      //     };
+
+      //     // Ưu tiên dùng overview_polyline nếu hợp lệ
+      //     if (route && route.overview_polyline && route.overview_polyline.points) {
+      //       try {
+      //         const decoded = polyline.toGeoJSON(route.overview_polyline.points);
+      //         if (decoded.coordinates && decoded.coordinates.length > 1) {
+      //           geojson.geometry.coordinates = decoded.coordinates;
+      //         }
+      //       } catch (e) {
+      //         console.warn("Lỗi decode polyline, dùng fallback", e);
+      //       }
+      //     }
+
+      //     // Fallback: nếu polyline lỗi hoặc quá ngắn → tự tạo đường thẳng từ start → end
+      //     if (geojson.geometry.coordinates.length < 2) {
+      //       console.warn("Dùng fallback LineString trực tiếp");
+      //       const start = route.legs[0].start_location;
+      //       const end = route.legs[0].end_location;
+      //       geojson.geometry.coordinates = [
+      //         [start.lng, start.lat],
+      //         [end.lng, end.lat],
+      //       ];
+      //     }
+
+      //     // Xóa source/layer cũ nếu đã tồn tại
+      //     if (map.getSource("route")) {
+      //       map.removeLayer("route");
+      //       map.removeSource("route");
+      //     }
+
+      //     // Thêm source
+      //     map.addSource("route", {
+      //       type: "geojson",
+      //       data: geojson,
+      //     });
+
+      //     // Thêm layer tuyến đường
+      //     map.addLayer(
+      //       {
+      //         id: "route",
+      //         type: "line",
+      //         source: "route",
+      //         layout: {
+      //           "line-join": "round",
+      //           "line-cap": "round",
+      //         },
+      //         paint: {
+      //           "line-color": "blue",
+      //           "line-width": 5,
+      //           "line-opacity": 0.9,
+      //         },
+      //       },
+      //       firstSymbolId
+      //     ); // vẽ dưới chữ
+
+      //     // Thêm marker điểm đầu và điểm cuối (tùy chọn)
+      //     new goongjs.Marker({ color: "#4CAF50" })
+      //       .setLngLat([route.legs[0].start_location.lng, route.legs[0].start_location.lat])
+      //       .addTo(map);
+
+      //     new goongjs.Marker({ color: "#f44336" })
+      //       .setLngLat([route.legs[0].end_location.lng, route.legs[0].end_location.lat])
+      //       .addTo(map);
+
+      //     // Fit bản đồ vừa với tuyến đường
+      //     const bounds = new goongjs.LngLatBounds();
+      //     geojson.geometry.coordinates.forEach((coord) => bounds.extend(coord));
+      //     map.fitBounds(bounds, { padding: 100, duration: 1500 });
+      //   })
+      //   .catch((err) => {
+      //     console.error("Lỗi gọi Directions API:", err);
+      //     alert("Không thể lấy tuyến đường. Kiểm tra API key và mạng!");
+      //   });
+
+      // // Direction Matrix
+      // goongClient.directions
+      //   .getDirectionMatrix({
+      //     origins: points.map((p) => p.coords.join(",")),
+      //     destinations: points.map((p) => p.coords.join(",")),
+      //     vehicle: "car",
+      //   })
+      //   .send()
+      //   .then((response) => {
+      //     console.log("🚀 ~ response:", response);
+      //   })
+      //   .catch((err) => {
+      //     console.error("Lỗi gọi Direction Matrix API:", err);
+      //     alert("Không thể lấy ma trận tuyến đường. Kiểm tra API key và mạng!");
+      //   });
+
+      // TẮT POI + NHÃN KHÔNG CẦN
       map.getStyle().layers.forEach((layer) => {
         const id = layer.id;
-        console.log("🚀 ~ id:", id);
+        // console.log("🚀 ~ id:", id);
         const type = layer.type;
         //   console.log("🚀 ~ type:", type);
         if (
@@ -254,7 +501,9 @@ export default function Map() {
           !id.includes("place-city2") && // Tỉnh
           !id.includes("place-village") &&
           !id.includes("lake-name_priority_2") &&
-          !id.includes("ocean")
+          !id.includes("ocean") && // Biển đông
+          !id.includes("place-island") && // Đảo nhỏ
+          !id.includes("place-archipelago") // Quần đảo hoàng sa/ Trường Sa
         ) {
           map.setLayoutProperty(id, "visibility", "none");
         }
@@ -329,12 +578,6 @@ export default function Map() {
       map.on("mouseleave", "clusters", () => {
         map.getCanvas().style.cursor = "";
       });
-
-      // Nếu đã có dữ liệu saleMan, cập nhật ngay
-      if (saleMan.length > 0) {
-        updateSalesmenData(map, saleMan);
-        flyToSalesman(map, saleMan);
-      }
     });
 
     return () => {
@@ -354,43 +597,6 @@ export default function Map() {
   return (
     <>
       <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} />
-
-      {/* Toggle button - chỉ hiển thị trên mobile */}
-      <button
-        className="legend-toggle-btn"
-        onClick={() => setIsLegendOpen(!isLegendOpen)}
-        type="button"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24">
-          <path
-            fill="currentColor"
-            d="M11 17h2v-6h-2zm1-8q.425 0 .713-.288T13 8t-.288-.712T12 7t-.712.288T11 8t.288.713T12 9m0 13q-2.075 0-3.9-.788t-3.175-2.137T2.788 15.9T2 12t.788-3.9t2.137-3.175T8.1 2.788T12 2t3.9.788t3.175 2.137T21.213 8.1T22 12t-.788 3.9t-2.137 3.175t-3.175 2.138T12 22m0-2q3.35 0 5.675-2.325T20 12t-2.325-5.675T12 4T6.325 6.325T4 12t2.325 5.675T12 20m0-8"
-            strokeWidth={0.5}
-            stroke="currentColor"
-          ></path>
-        </svg>
-      </button>
-
-      {/* Legend - Chú thích */}
-      <div className={`map-legend ${isLegendOpen ? "open" : ""}`}>
-        <h4>Chú thích</h4>
-        <div className="legend-item">
-          <div className="legend-color visited-order"></div>
-          <div className="legend-text">Viếng thăm có đơn hàng</div>
-        </div>
-        <div className="legend-item">
-          <div className="legend-color visited-no-order"></div>
-          <div className="legend-text">Viếng thăm không có đơn hàng</div>
-        </div>
-        <div className="legend-item">
-          <div className="legend-color visited-closed"></div>
-          <div className="legend-text">Khách hàng đóng cửa</div>
-        </div>
-        <div className="legend-item">
-          <div className="legend-color not-visited"></div>
-          <div className="legend-text">Chưa ghé thăm</div>
-        </div>
-      </div>
     </>
   );
 }
