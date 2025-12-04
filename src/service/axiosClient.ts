@@ -37,9 +37,9 @@ axiosClient.interceptors.response.use(
   function (response: AxiosResponse) {
     NProgress.done();
     // Nếu response có cấu trúc { data: { data: ... } } thì return data.data
-    if (response.data && typeof response.data === "object" && "data" in response.data) {
-      return response.data;
-    }
+    // if (response.data && typeof response.data === "object" && "data" in response.data) {
+    //   return response.data;
+    // }
     return response;
   },
   function (error: AxiosError) {

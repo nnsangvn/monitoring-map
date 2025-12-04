@@ -1,11 +1,10 @@
 import "@goongmaps/goong-js/dist/goong-js.css";
 import "./App.css";
 import Map from "./components/Map";
+import RouteMap from "./components/RouteMap";
 
 export default function App() {
-  return (
-    <>
-      <Map />
-    </>
-  );
+  const params = new URLSearchParams(window.location.search);
+  const routeMap = params.get("route") === "true";
+  return <>{routeMap ? <RouteMap /> : <Map />}</>;
 }
