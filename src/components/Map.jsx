@@ -15,7 +15,6 @@ export default function Map() {
   const params = new URLSearchParams(window.location.search);
   const parentCode = params.get("parent_code");
 
-  const [isLegendOpen, setIsLegendOpen] = useState(false);
   const [saleMan, setSaleMan] = useState([]);
 
   // const loadDirection = async () => {
@@ -55,7 +54,7 @@ export default function Map() {
           <li><strong>Doanh số tháng:</strong> ${salesman.total_sale}</li>
           <li><strong>Doanh số ngày:</strong> ${salesman.total_sale_completed}</li>
           <li><strong>Đã viếng thăm:</strong> ${salesman.total_visit_day} cửa hàng</li>
-          <li><strong>Chưa viếng thăm:</strong>...</li>
+          <li><strong>Chưa viếng thăm:</strong>${salesman.total_not_visit_day} </li>
           <li><strong>Đơn hôm nay:</strong> ${salesman.order_count_day} đơn</li>
         </ul>
         <button id="route-button" data-code="${salesman.code}">Lộ trình</button>
@@ -127,6 +126,62 @@ export default function Map() {
         ${coloredIcon.replace(/<svg[^>]*>|<\/svg>/g, "")}
       </g>
     </svg>`;
+  };
+
+  // ========== CREATE PULSING DOT ==========
+  const createPulsingDot = (color = "rgba(0, 181, 255, 1)") => {
+    const size = 150;
+
+    return {
+      width: size,
+      height: size,
+      data: new Uint8Array(size * size * 4),
+
+      onAdd: function (map) {
+        const canvas = document.createElement("canvas");
+        canvas.width = this.width;
+        canvas.height = this.height;
+        this.context = canvas.getContext("2d");
+        this.map = map;
+      },
+
+      render: function () {
+        const duration = 1000;
+        const t = (performance.now() % duration) / duration;
+
+        const radius = (this.width / 2) * 0.3;
+        const outerRadius = (this.width / 2) * 0.7 * t + radius;
+        const context = this.context;
+
+        // Clear canvas
+        context.clearRect(0, 0, this.width, this.height);
+
+        // Draw outer circle (pulsing effect)
+        context.beginPath();
+        context.arc(this.width / 2, this.height / 2, outerRadius, 0, Math.PI * 2);
+        // Màu ngoài mờ dần
+        const outerColor = color.replace("1)", `${1 - t})`);
+        context.fillStyle = outerColor;
+        context.fill();
+
+        // Draw inner circle (solid)
+        context.beginPath();
+        context.arc(this.width / 2, this.height / 2, radius, 0, Math.PI * 2);
+        context.fillStyle = color;
+        context.strokeStyle = "white";
+        context.lineWidth = 2 + 4 * (1 - t);
+        context.fill();
+        context.stroke();
+
+        // Update image data
+        this.data = context.getImageData(0, 0, this.width, this.height).data;
+
+        // Trigger repaint for animation
+        this.map.triggerRepaint();
+
+        return true;
+      },
+    };
   };
 
   // ========== HÀM CẬP NHẬT DỮ LIỆU NHÂN VIÊN ==========
@@ -216,7 +271,36 @@ export default function Map() {
         },
       });
 
-      // === LAYER 3: UNCLUSTERED POINTS ===
+      // Tạo pulsing dots với màu khác nhau cho online/offline
+      const pulsingDotBlue = createPulsingDot(
+        APP_COLORS.BLUE.replace("rgb", "rgba").replace(")", ", 1)")
+      );
+      const pulsingDotRed = createPulsingDot(
+        APP_COLORS.RED.replace("rgb", "rgba").replace(")", ", 1)")
+      );
+
+      map.addImage("pulsing-dot-blue", pulsingDotBlue, { pixelRatio: 3 });
+      map.addImage("pulsing-dot-red", pulsingDotRed, { pixelRatio: 3 });
+
+      // Layer pulsing dots - PHẢI THÊM TRƯỚC salesman-points
+      map.addLayer({
+        id: "salesman-pulse",
+        type: "symbol",
+        source: "salesmen",
+        filter: [
+          "all",
+          ["!", ["has", "point_count"]], // không phải cluster
+          ["==", ["get", "salesmanStatus"], "online"], // CHỈ khi online
+        ],
+        layout: {
+          "icon-image": "pulsing-dot-blue", // cố định luôn là blue
+          "icon-size": 0.5, // Nhỏ hơn icon chính
+          "icon-allow-overlap": true,
+          "icon-anchor": "center", // Center để pulse ở giữa
+        },
+      });
+
+      // === LAYER 4: SALESMAN POINTS (trên pulsing dots) ===
       map.addLayer({
         id: "salesman-points",
         type: "symbol",
@@ -513,43 +597,6 @@ export default function Map() {
   return (
     <>
       <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} />
-
-      {/* Toggle button - chỉ hiển thị trên mobile */}
-      <button
-        className="legend-toggle-btn"
-        onClick={() => setIsLegendOpen(!isLegendOpen)}
-        type="button"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24">
-          <path
-            fill="currentColor"
-            d="M11 17h2v-6h-2zm1-8q.425 0 .713-.288T13 8t-.288-.712T12 7t-.712.288T11 8t.288.713T12 9m0 13q-2.075 0-3.9-.788t-3.175-2.137T2.788 15.9T2 12t.788-3.9t2.137-3.175T8.1 2.788T12 2t3.9.788t3.175 2.137T21.213 8.1T22 12t-.788 3.9t-2.137 3.175t-3.175 2.138T12 22m0-2q3.35 0 5.675-2.325T20 12t-2.325-5.675T12 4T6.325 6.325T4 12t2.325 5.675T12 20m0-8"
-            strokeWidth={0.5}
-            stroke="currentColor"
-          ></path>
-        </svg>
-      </button>
-
-      {/* Legend - Chú thích */}
-      <div className={`map-legend ${isLegendOpen ? "open" : ""}`}>
-        <h4>Chú thích</h4>
-        <div className="legend-item">
-          <div className="legend-color visited-order"></div>
-          <div className="legend-text">Viếng thăm có đơn hàng</div>
-        </div>
-        <div className="legend-item">
-          <div className="legend-color visited-no-order"></div>
-          <div className="legend-text">Viếng thăm không có đơn hàng</div>
-        </div>
-        <div className="legend-item">
-          <div className="legend-color visited-closed"></div>
-          <div className="legend-text">Khách hàng đóng cửa</div>
-        </div>
-        <div className="legend-item">
-          <div className="legend-color not-visited"></div>
-          <div className="legend-text">Chưa ghé thăm</div>
-        </div>
-      </div>
     </>
   );
 }

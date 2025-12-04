@@ -1,7 +1,7 @@
 import "@goongmaps/goong-js/dist/goong-js.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
-import { getPointOfSale } from "../service/api";
+import { getPointOfSale, getSalemanTracking } from "../service/api";
 import { APP_COLORS } from "../constants/colors";
 
 const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY;
@@ -14,13 +14,16 @@ const POS_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height=
 export default function RouteMap() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
+  const routeAnimationTimerRef = useRef(null); // Thêm ref để lưu timer
+  const [shouldDrawRoute, setShouldDrawRoute] = useState(false); // mặc định là false → không vẽ
   const params = new URLSearchParams(window.location.search);
   const salemanCode = params.get("saleman_code");
   const from = params.get("from");
   const to = params.get("to");
-  const [isLegendOpen, setIsLegendOpen] = useState(false);
   // Danh sách điểm bán
   const [pointOfSale, setPointOfSale] = useState([]);
+  const [salemanTracking, setSalemanTracking] = useState([]);
+  const [routeCoordinates, setRouteCoordinates] = useState([]);
 
   useEffect(() => {
     const loadPointOfSale = async () => {
@@ -31,6 +34,41 @@ export default function RouteMap() {
     };
     loadPointOfSale();
   }, [salemanCode, from, to]);
+
+  useEffect(() => {
+    const loadSalemanTracking = async () => {
+      const res = await getSalemanTracking(salemanCode, "01-12-2025", "31-12-2025");
+      if (res.data.data) {
+        setSalemanTracking(res.data.data);
+      }
+    };
+    loadSalemanTracking();
+  }, [salemanCode, from, to]);
+
+  useEffect(() => {
+    if (salemanTracking.length === 0) {
+      setRouteCoordinates([]);
+      return;
+    }
+
+    // Map dữ liệu từ API thành format coordinates [long, lat]
+    const coordinates = salemanTracking
+      .filter((track) => track.long && track.lat) // Lọc những item có đầy đủ lat, long
+      .map((track) => [
+        parseFloat(track.long), // Longitude trước
+        parseFloat(track.lat), // Latitude sau
+      ]);
+
+    // Format như trong ví dụ GeoJSON
+    const routeData = {
+      coordinates: coordinates,
+    };
+
+    // console.log("🚀 ~ Route Data (coordinates format):", routeData);
+    // console.log("🚀 ~ Coordinates array:", coordinates);
+
+    setRouteCoordinates(coordinates);
+  }, [salemanTracking]);
 
   // POPUP POS
   const showPointOfSalePopup = useCallback((map, pointOfSale, coords) => {
@@ -173,6 +211,164 @@ export default function RouteMap() {
     loadImageFromSVG(pos_yellow, "icon-pos-yellow", onAllLoaded);
     loadImageFromSVG(pos_red, "icon-pos-red", onAllLoaded);
     loadImageFromSVG(pos_gray, "icon-pos-gray", onAllLoaded);
+  }, []);
+
+  // ========== HÀM VẼ ROUTE TỪ SALEMAN TRACKING ==========
+  const updateRouteData = useCallback((map, coordinates) => {
+    if (!coordinates || coordinates.length === 0) return;
+
+    // Clear timer cũ nếu có
+    if (routeAnimationTimerRef.current) {
+      clearInterval(routeAnimationTimerRef.current);
+      routeAnimationTimerRef.current = null;
+    }
+
+    // Xóa source và layer cũ nếu có
+    if (map.getSource("route")) {
+      if (map.getLayer("route-line")) map.removeLayer("route-line");
+      if (map.getLayer("route-start-point")) map.removeLayer("route-start-point");
+      map.removeSource("route");
+    }
+
+    // Lưu full coordinate list để dùng sau
+    const fullCoordinates = [...coordinates];
+
+    // Bắt đầu chỉ với điểm đầu tiên
+    const initialData = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: fullCoordinates.length > 0 ? [fullCoordinates[0]] : [],
+          },
+          properties: {},
+        },
+      ],
+    };
+
+    // Thêm source cho route với điểm đầu tiên
+    map.addSource("route", {
+      type: "geojson",
+      data: initialData,
+    });
+
+    // Thêm layer để vẽ đường đi
+    if (!map.getLayer("route-line")) {
+      map.addLayer({
+        id: "route-line",
+        type: "line",
+        source: "route",
+        layout: {
+          "line-join": "round",
+          "line-cap": "round",
+        },
+        paint: {
+          "line-color": "#3887be",
+          "line-opacity": 0.75,
+          "line-width": 5,
+        },
+      });
+    }
+
+    // Thêm điểm bắt đầu (start marker)
+    if (fullCoordinates.length > 0) {
+      const startPointGeoJSON = {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: fullCoordinates[0],
+            },
+            properties: {
+              type: "start",
+            },
+          },
+        ],
+      };
+
+      map.addSource("route-start-point", {
+        type: "geojson",
+        data: startPointGeoJSON,
+      });
+
+      // Thêm layer cho điểm bắt đầu (có thể tùy chỉnh icon sau)
+      if (!map.getLayer("route-start-point")) {
+        map.addLayer({
+          id: "route-start-point",
+          type: "circle",
+          source: "route-start-point",
+          paint: {
+            "circle-radius": 8,
+            "circle-color": "#00ff00",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+          },
+        });
+      }
+    }
+
+    // Setup viewport - jump to điểm đầu tiên
+    if (fullCoordinates.length > 0) {
+      map.jumpTo({
+        center: fullCoordinates[0],
+        zoom: 14,
+      });
+      map.setPitch(30);
+    }
+
+    // Animation: thêm từng điểm một theo interval
+    let i = 1; // Bắt đầu từ điểm thứ 2 (điểm đầu đã có)
+    routeAnimationTimerRef.current = setInterval(() => {
+      if (i < fullCoordinates.length && map.getSource("route")) {
+        // Lấy data hiện tại
+        const currentData = map.getSource("route")._data;
+
+        // Thêm điểm mới vào coordinates
+        currentData.features[0].geometry.coordinates.push(fullCoordinates[i]);
+
+        // Update source với data mới
+        map.getSource("route").setData(currentData);
+
+        // Pan map đến điểm mới
+        map.panTo(fullCoordinates[i]);
+
+        i++;
+      } else {
+        // Dừng animation khi đã vẽ hết
+        if (routeAnimationTimerRef.current) {
+          clearInterval(routeAnimationTimerRef.current);
+          routeAnimationTimerRef.current = null;
+        }
+
+        // Fit bounds để hiển thị toàn bộ route sau khi vẽ xong
+        if (fullCoordinates.length > 0) {
+          const bounds = fullCoordinates.reduce((bounds, coord) => {
+            return bounds.extend(coord);
+          }, new window.goongjs.LngLatBounds(fullCoordinates[0], fullCoordinates[0]));
+
+          map.fitBounds(bounds, {
+            padding: { top: 50, bottom: 50, left: 50, right: 50 },
+            duration: 1000,
+          });
+        }
+      }
+    }, 200); // Interval 100ms
+
+    // Fit map để hiển thị toàn bộ route
+    if (coordinates.length > 0) {
+      const bounds = coordinates.reduce((bounds, coord) => {
+        return bounds.extend(coord);
+      }, new window.goongjs.LngLatBounds(coordinates[0], coordinates[0]));
+
+      map.fitBounds(bounds, {
+        padding: { top: 50, bottom: 50, left: 50, right: 50 },
+        duration: 1000,
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -318,45 +514,63 @@ export default function RouteMap() {
     updatePointOfSaleData(mapRef.current, pointOfSale);
   }, [pointOfSale, updatePointOfSaleData]);
 
+  // Cleanup timer khi component unmount
+  useEffect(() => {
+    return () => {
+      if (routeAnimationTimerRef.current) {
+        clearInterval(routeAnimationTimerRef.current);
+        routeAnimationTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.loaded()) return;
+    if (!shouldDrawRoute) return;
+    if (routeCoordinates.length === 0) return;
+
+    updateRouteData(map, routeCoordinates);
+  }, [shouldDrawRoute, routeCoordinates, updateRouteData]);
+
+  // ========== VẼ ROUTE KHI CÓ COORDINATES ==========
+  // useEffect(() => {
+  //   if (!mapRef.current || !mapRef.current.loaded()) return;
+  //   if (routeCoordinates.length === 0) return;
+
+  //   updateRouteData(mapRef.current, routeCoordinates);
+  // }, [routeCoordinates, updateRouteData]);
+
   return (
     <>
-      <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} />
+      {/* <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} /> */}
+      <div style={{ position: "relative", width: "100%", height: "100vh" }}>
+        {/* Nút bấm nổi trên bản đồ */}
+        {routeCoordinates.length > 0 && !shouldDrawRoute && (
+          <button
+            onClick={() => setShouldDrawRoute(true)}
+            style={{
+              position: "absolute",
+              top: "20px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 10,
+              padding: "12px 24px",
+              background: "#3887be",
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              fontSize: "16px",
+              fontWeight: "bold",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+              cursor: "pointer",
+            }}
+          >
+            Xem lộ trình di chuyển
+          </button>
+        )}
 
-      {/* Toggle button - chỉ hiển thị trên mobile */}
-      <button
-        className="legend-toggle-btn"
-        onClick={() => setIsLegendOpen(!isLegendOpen)}
-        type="button"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24">
-          <path
-            fill="currentColor"
-            d="M11 17h2v-6h-2zm1-8q.425 0 .713-.288T13 8t-.288-.712T12 7t-.712.288T11 8t.288.713T12 9m0 13q-2.075 0-3.9-.788t-3.175-2.137T2.788 15.9T2 12t.788-3.9t2.137-3.175T8.1 2.788T12 2t3.9.788t3.175 2.137T21.213 8.1T22 12t-.788 3.9t-2.137 3.175t-3.175 2.138T12 22m0-2q3.35 0 5.675-2.325T20 12t-2.325-5.675T12 4T6.325 6.325T4 12t2.325 5.675T12 20m0-8"
-            strokeWidth={0.5}
-            stroke="currentColor"
-          ></path>
-        </svg>
-      </button>
-
-      {/* Legend - Chú thích */}
-      <div className={`map-legend ${isLegendOpen ? "open" : ""}`}>
-        <h4>Chú thích</h4>
-        <div className="legend-item">
-          <div className="legend-color visited-order"></div>
-          <div className="legend-text">Viếng thăm có đơn hàng</div>
-        </div>
-        <div className="legend-item">
-          <div className="legend-color visited-no-order"></div>
-          <div className="legend-text">Viếng thăm không có đơn hàng</div>
-        </div>
-        <div className="legend-item">
-          <div className="legend-color visited-closed"></div>
-          <div className="legend-text">Khách hàng đóng cửa</div>
-        </div>
-        <div className="legend-item">
-          <div className="legend-color not-visited"></div>
-          <div className="legend-text">Chưa ghé thăm</div>
-        </div>
+        <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} />
       </div>
     </>
   );

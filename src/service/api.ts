@@ -16,10 +16,15 @@ const getPointOfSale = (salemanCode: string, from?: string, to?: string) => {
   return axiosClient.get(URL);
 };
 
+const getSalemanTracking = (salemanCode: string, from?: string, to?: string) => {
+  const URL = `https://api-smac.newweb.vn/v0/client/saleman-route-tracking?saleman_code=${salemanCode}&from=${from}&to=${to}`;
+  return axiosClient.get(URL);
+};
+
 // ======== Goong API - ========
 const direction = () => {
   const URL = `https://rsapi.goong.io/v2/direction?origin=21.046623224000029,105.790168203000060&destination=21.046666732000062,105.790169569000060&vehicle=car&api_key=${GOONG_API_KEY}`;
   return axiosClient.get(URL);
 };
 
-export { fetchSaleMan, direction, getPointOfSale };
+export { fetchSaleMan, direction, getPointOfSale, getSalemanTracking };
