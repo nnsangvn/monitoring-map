@@ -3,7 +3,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import "@goongmaps/goong-js/dist/goong-js.css";
 // import { BrowserRouter } from "react-router-dom";
+import "nprogress/nprogress.css";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(

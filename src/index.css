@@ -13,6 +13,9 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+.mapboxgl-popup-close-button {
+  display: none; /* Ẩn nút x của popup khi click vào marker*/
+}
 
 .mapboxgl-ctrl-bottom-left {
   display: none !important; /* Ẩn logo Goong trên bản đồ */

@@ -1,6 +1,7 @@
 import "@goongmaps/goong-js/dist/goong-js.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
+import "../index.css";
 import { direction, fetchSaleMan } from "../service/api.ts";
 import { APP_COLORS } from "../constants/colors.js";
 
@@ -57,7 +58,6 @@ export default function Map() {
           <li><strong>Chưa viếng thăm:</strong>${salesman.total_not_visit_day} </li>
           <li><strong>Đơn hôm nay:</strong> ${salesman.order_count_day} đơn</li>
         </ul>
-        <button id="route-button" data-code="${salesman.code}">Lộ trình</button>
       </div>`;
     const popup = new window.goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
       .setLngLat(coords)
@@ -65,15 +65,15 @@ export default function Map() {
       .addTo(map);
 
     // Thêm event listener cho button sau khi popup được render
-    setTimeout(() => {
-      const routeButton = document.getElementById("route-button");
-      if (routeButton) {
-        routeButton.addEventListener("click", () => {
-          const salemanCode = routeButton.getAttribute("data-code");
-          window.location.href = `/?route=true&saleman_code=${salemanCode}`;
-        });
-      }
-    }, 100);
+    // setTimeout(() => {
+    //   const routeButton = document.getElementById("route-button");
+    //   if (routeButton) {
+    //     routeButton.addEventListener("click", () => {
+    //       const salemanCode = routeButton.getAttribute("data-code");
+    //       window.location.href = `/?route=true&saleman_code=${salemanCode}`;
+    //     });
+    //   }
+    // }, 100);
   }, []);
 
   // ========== HÀM FLY TO SALESMAN ==========
