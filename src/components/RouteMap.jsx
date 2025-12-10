@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
 import "../index.css";
 import { APP_COLORS } from "../constants/colors";
-import { POS_ICON_SVG } from "../constants/icon";
+import { POS_ICON_SVG, USER_ICON_SVG } from "../constants/icon";
 import { createSVGMarker } from "../utils/marker";
 import accessToken from "./access_token.jsx";
 import { usePointofSale } from "../hooks/usePointofSale.js";
@@ -67,6 +67,109 @@ export default function RouteMap() {
       .setHTML(html)
       .addTo(map);
   }, []);
+
+  // POPUP SALEMAN
+  const showSalemanPopup = useCallback((map, salemanCode, coords) => {
+    const html = `
+      <div class="salesman-popup">
+        <ul>
+          <li> <strong>Nhân viên</strong> </li>
+          <li><strong>Code:</strong> ${salemanCode}</li>
+          <li><strong>Vị trí hiện tại</strong></li>
+        </ul>
+      </div>`;
+    new goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
+      .setLngLat(coords)
+      .setHTML(html)
+      .addTo(map);
+  }, []);
+
+  // ========== HÀM VẼ MARKER CHO SALEMAN ==========
+  const updateSalemanMarker = useCallback(
+    (map, coordinates) => {
+      if (!coordinates || coordinates.length === 0) return;
+
+      // Xóa source và layer cũ nếu có
+      if (map.getSource("saleman-marker")) {
+        if (map.getLayer("saleman-marker-point")) map.removeLayer("saleman-marker-point");
+        map.removeSource("saleman-marker");
+      }
+
+      // Lấy điểm cuối cùng làm vị trí hiện tại của saleman
+      const currentPosition = coordinates[coordinates.length - 1];
+
+      if (!currentPosition) return;
+
+      // Tạo GeoJSON cho marker saleman
+      const salemanMarkerGeoJSON = {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: currentPosition,
+            },
+            properties: {
+              salemanCode: salemanCode,
+            },
+          },
+        ],
+      };
+
+      // Thêm source cho saleman marker
+      map.addSource("saleman-marker", {
+        type: "geojson",
+        data: salemanMarkerGeoJSON,
+      });
+
+      // Tạo icon cho saleman (màu xanh)
+      const saleman_icon = createSVGMarker(APP_COLORS.GREEN, USER_ICON_SVG);
+
+      // Hàm load image từ SVG
+      const loadImageFromSVG = (svg, name, callback) => {
+        const img = new Image();
+        img.onload = () => {
+          map.addImage(name, img);
+          callback();
+        };
+        img.src = "data:image/svg+xml;base64," + btoa(svg);
+      };
+
+      loadImageFromSVG(saleman_icon, "icon-saleman-current", () => {
+        // Thêm layer cho saleman marker
+        if (!map.getLayer("saleman-marker-point")) {
+          map.addLayer({
+            id: "saleman-marker-point",
+            type: "symbol",
+            source: "saleman-marker",
+            layout: {
+              "icon-image": "icon-saleman-current",
+              "icon-size": 1.0,
+              "icon-allow-overlap": true,
+              "icon-anchor": "bottom",
+            },
+          });
+
+          // Click vào marker → hiện popup
+          map.on("click", "saleman-marker-point", (e) => {
+            const feature = e.features[0];
+            showSalemanPopup(map, salemanCode, feature.geometry.coordinates);
+          });
+
+          // Hover effect
+          map.on("mouseenter", "saleman-marker-point", () => {
+            map.getCanvas().style.cursor = "pointer";
+          });
+
+          map.on("mouseleave", "saleman-marker-point", () => {
+            map.getCanvas().style.cursor = "";
+          });
+        }
+      });
+    },
+    [salemanCode, showSalemanPopup]
+  );
 
   // ========== HÀM CẬP NHẬT DỮ LIỆU ĐIỂM BÁN ==========
   const updatePointOfSaleData = useCallback((map, points) => {
@@ -502,6 +605,14 @@ export default function RouteMap() {
 
     updatePointOfSaleData(mapRef.current, pointOfSale);
   }, [pointOfSale, updatePointOfSaleData]);
+
+  // ========== CẬP NHẬT MARKER SALEMAN KHI CÓ DỮ LIỆU TRACKING ==========
+  useEffect(() => {
+    if (!mapRef.current || !mapRef.current.loaded()) return;
+    if (routeCoordinates.length === 0) return;
+
+    updateSalemanMarker(mapRef.current, routeCoordinates);
+  }, [routeCoordinates, updateSalemanMarker]);
 
   // Cleanup timer khi component unmount
   useEffect(() => {
