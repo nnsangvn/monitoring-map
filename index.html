@@ -15,6 +15,20 @@
     <script src="https://cdn.jsdelivr.net/npm/@mapbox/polyline@1.1.1/src/polyline.js"></script>
     <script src="https://unpkg.com/@goongmaps/goong-sdk/umd/goong-sdk.min.js"></script>
 
+    <style>
+      body { margin: 0; padding: 0; }
+      #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+      .mapboxgl-popup-close-button {
+        display: none; /* Ẩn nút x của popup  khi click vào vườn ươm*/
+      }
+      .mapboxgl-ctrl-bottom-left {
+        display: none; /* Ẩn logo bên trái của Goong Maps */
+      }
+      .mapboxgl-ctrl-bottom-right {
+        display: none; /* Ẩn logo bên phải của Goong Maps */
+      }
+    </style>
+
   </head>
   <body>
     <div id="root"></div>

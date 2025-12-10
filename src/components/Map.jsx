@@ -511,7 +511,7 @@ export default function Map() {
 
       // === 1. NÚT ZOOM + / − ===
       map.addControl(
-        new window.goongjs.NavigationControl({
+        new goongjs.NavigationControl({
           showCompass: false,
           showZoom: true,
           visualizePitch: false,
@@ -521,7 +521,7 @@ export default function Map() {
 
       // === 2. NÚT LA BÀN (Compass) ===
       map.addControl(
-        new window.goongjs.NavigationControl({
+        new goongjs.NavigationControl({
           showZoom: false,
           showCompass: true,
           visualizePitch: false,
@@ -531,7 +531,7 @@ export default function Map() {
 
       // === 3. NÚT ĐỊNH VỊ HIỆN TẠI ===
       map.addControl(
-        new window.goongjs.GeolocateControl({
+        new goongjs.GeolocateControl({
           positionOptions: { enableHighAccuracy: true },
           trackUserLocation: true,
           showAccuracyCircle: true,
@@ -539,6 +539,9 @@ export default function Map() {
         }),
         "top-right"
       );
+
+      // === 4. NÚT FULLSCREEN ===
+      map.addControl(new goongjs.FullscreenControl());
 
       // Setup event handlers cho click và hover
       // Click vào nhân viên → hiện popup (sẽ được thêm sau khi có layers)
@@ -595,8 +598,14 @@ export default function Map() {
   }, [saleMan, updateSalesmenData, flyToSalesman]);
 
   return (
-    <>
-      <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} />
-    </>
+    <div
+      ref={mapContainer}
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100vw",
+        height: "100vh",
+      }}
+    />
   );
 }
