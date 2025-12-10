@@ -2,11 +2,12 @@ import "@goongmaps/goong-js/dist/goong-js.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
 import "../index.css";
-import { getPointOfSale, getSalemanTracking } from "../service/api";
 import { APP_COLORS } from "../constants/colors";
 import { POS_ICON_SVG } from "../constants/icon";
 import { createSVGMarker } from "../utils/marker";
 import accessToken from "./access_token.jsx";
+import { usePointofSale } from "../hooks/usePointofSale.js";
+import { useSalemanRouteTracking } from "../hooks/useSalemanRouteTracking.js";
 
 goongjs.accessToken = accessToken;
 
@@ -19,33 +20,15 @@ export default function RouteMap() {
   const salemanCode = params.get("saleman_code");
   const from = params.get("from");
   const to = params.get("to");
-  // Danh sách điểm bán
-  const [pointOfSale, setPointOfSale] = useState([]);
-  const [salemanTracking, setSalemanTracking] = useState([]);
+
+  // Sử dụng hooks để fetch data
+  const pointOfSale = usePointofSale(salemanCode, from, to);
+  const salemanTracking = useSalemanRouteTracking(salemanCode, from, to);
+
   const [routeCoordinates, setRouteCoordinates] = useState([]);
 
   useEffect(() => {
-    const loadPointOfSale = async () => {
-      const res = await getPointOfSale(salemanCode, from || "01-12-2025", to || "31-12-2025");
-      if (res.data.data) {
-        setPointOfSale(res.data.data);
-      }
-    };
-    loadPointOfSale();
-  }, [salemanCode, from, to]);
-
-  useEffect(() => {
-    const loadSalemanTracking = async () => {
-      const res = await getSalemanTracking(salemanCode, from || "01-12-2025", to || "31-12-2025");
-      if (res.data.data) {
-        setSalemanTracking(res.data.data);
-      }
-    };
-    loadSalemanTracking();
-  }, [salemanCode, from, to]);
-
-  useEffect(() => {
-    if (salemanTracking.length === 0) {
+    if (salemanTracking?.length === 0) {
       setRouteCoordinates([]);
       return;
     }
@@ -79,7 +62,7 @@ export default function RouteMap() {
           <li><strong>Trạng thái:</strong> ${pointOfSale.marker_name || "N/A"}</li>
         </ul>
       </div>`;
-    new window.goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
+    new goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
       .setLngLat(coords)
       .setHTML(html)
       .addTo(map);
@@ -435,7 +418,7 @@ export default function RouteMap() {
 
       // === 1. NÚT ZOOM + / − ===
       map.addControl(
-        new window.goongjs.NavigationControl({
+        new goongjs.NavigationControl({
           showCompass: false,
           showZoom: true,
           visualizePitch: false,
@@ -445,7 +428,7 @@ export default function RouteMap() {
 
       // === 2. NÚT LA BÀN (Compass) ===
       map.addControl(
-        new window.goongjs.NavigationControl({
+        new goongjs.NavigationControl({
           showZoom: false,
           showCompass: true,
           visualizePitch: false,
@@ -455,7 +438,7 @@ export default function RouteMap() {
 
       // === 3. NÚT ĐỊNH VỊ HIỆN TẠI ===
       map.addControl(
-        new window.goongjs.GeolocateControl({
+        new goongjs.GeolocateControl({
           positionOptions: { enableHighAccuracy: true },
           trackUserLocation: true,
           showAccuracyCircle: true,
@@ -463,6 +446,9 @@ export default function RouteMap() {
         }),
         "top-right"
       );
+
+      // === 4. NÚT FULLSCREEN ===
+      map.addControl(new goongjs.FullscreenControl());
 
       // Setup event handlers cho click và hover
       // Click vào điểm bán → hiện popup (có thể tùy chỉnh sau)

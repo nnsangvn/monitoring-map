@@ -2,39 +2,24 @@ import "@goongmaps/goong-js/dist/goong-js.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
 import "../index.css";
-import { fetchSaleMan } from "../service/api.ts";
 import { APP_COLORS } from "../constants/colors.js";
 import { USER_ICON_SVG } from "../constants/icon.js";
 import { createSVGMarker } from "../utils/marker.js";
 import accessToken from "./access_token.jsx";
+import { useSaleMan } from "../hooks/useSaleMan.js";
 
 goongjs.accessToken = accessToken;
 
 export default function Map() {
-  const mapContainer = useRef(null);
+  const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const params = new URLSearchParams(window.location.search);
   const parentCode = params.get("parent_code");
 
-  const [saleMan, setSaleMan] = useState([]);
+  const saleMan = useSaleMan(parentCode);
+  const [isMapLoaded, setIsMapLoaded] = useState(false); // Thêm state để track map đã load
 
-  useEffect(() => {
-    const loadSalesmen = async () => {
-      const res = await fetchSaleMan(parentCode);
-      if (res.data.data) {
-        setSaleMan(res.data.data);
-      }
-    };
-    loadSalesmen();
-  }, []);
-
-  // Log saleMan khi state thay đổi
-  useEffect(() => {
-    // console.log("🚀 ~ saleMan state:", saleMan);
-    // console.log("🚀 ~ saleMan length:", saleMan.length);
-  }, [saleMan]);
-
-  // ========== HÀM HIỂN THỊ POPUP ==========
+  // === SHOW SALESMAN POPUP ===
   const showSalesmanPopup = useCallback((map, salesman, coords) => {
     const html = `
       <div class="salesman-popup">
@@ -55,7 +40,7 @@ export default function Map() {
       .addTo(map);
   }, []);
 
-  // ========== HÀM FLY TO SALESMAN ==========
+  // === FLY TO SALESMAN ===
   const flyToSalesman = useCallback(
     (map, salesmen) => {
       if (!parentCode) {
@@ -96,7 +81,7 @@ export default function Map() {
     [showSalesmanPopup]
   );
 
-  // ========== CREATE PULSING DOT ==========
+  // === CREATE PULSING DOT ===
   const createPulsingDot = (color = "rgba(0, 181, 255, 1)") => {
     const size = 150;
 
@@ -152,7 +137,7 @@ export default function Map() {
     };
   };
 
-  // ========== HÀM CẬP NHẬT DỮ LIỆU NHÂN VIÊN ==========
+  // === UPDATE SALESMEN DATA ===
   const updateSalesmenData = useCallback((map, salesmen) => {
     // Xóa source và layers cũ nếu có
     if (map.getSource("salesmen")) {
@@ -295,12 +280,12 @@ export default function Map() {
     loadImageFromSVG(saleman_gray, "icon-saleman-gray", onAllLoaded);
   }, []);
 
-  // ========== TẠO MAP (CHỈ 1 LẦN) ==========
+  // === KHỞI TẠO MAP (CHỈ 1 LẦN) ===
   useEffect(() => {
-    if (!mapContainer.current) return;
+    if (!mapContainerRef.current) return;
 
     const map = new goongjs.Map({
-      container: mapContainer.current,
+      container: mapContainerRef.current,
       style: "https://tiles.goong.io/assets/goong_map_web.json",
       center: [106.72055776537006, 10.803239881310812],
       zoom: 12,
@@ -309,6 +294,8 @@ export default function Map() {
     mapRef.current = map;
 
     map.on("load", () => {
+      setIsMapLoaded(true); // Đánh dấu map đã load
+
       // TẮT POI + NHÃN KHÔNG CẦN (chờ map load xong)
       // Danh sách các layer cần GIỮ LẠI (whitelist)
       const keepLayers = new Set([
@@ -454,21 +441,25 @@ export default function Map() {
       });
     });
 
-    return () => map.remove();
+    return () => {
+      map.remove();
+      setIsMapLoaded(false);
+    };
   }, []); // CHỈ chạy 1 lần khi mount
 
-  // ========== CẬP NHẬT DỮ LIỆU KHI saleMan THAY ĐỔI ==========
+  // === VẼ: KHI CÓ DATA VÀ MAP ĐÃ LOAD ===
   useEffect(() => {
-    if (!mapRef.current || !mapRef.current.loaded()) return;
+    if (!mapRef.current || !isMapLoaded) return;
     if (saleMan.length === 0) return;
 
+    // Gọi hàm vẽ data
     updateSalesmenData(mapRef.current, saleMan);
     flyToSalesman(mapRef.current, saleMan);
-  }, [saleMan, updateSalesmenData, flyToSalesman]);
+  }, [saleMan, isMapLoaded, updateSalesmenData, flyToSalesman]);
 
   return (
     <div
-      ref={mapContainer}
+      ref={mapContainerRef}
       style={{
         position: "absolute",
         inset: 0,
