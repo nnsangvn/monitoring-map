@@ -1,6 +1,7 @@
 import "@goongmaps/goong-js/dist/goong-js.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
+import "../index.css";
 import { direction, fetchSaleMan } from "../service/api.ts";
 import { APP_COLORS } from "../constants/colors.js";
 

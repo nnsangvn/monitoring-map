@@ -1,6 +1,7 @@
 import "@goongmaps/goong-js/dist/goong-js.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
+import "../index.css";
 import { getPointOfSale, getSalemanTracking } from "../service/api";
 import { APP_COLORS } from "../constants/colors";
 
@@ -27,7 +28,7 @@ export default function RouteMap() {
 
   useEffect(() => {
     const loadPointOfSale = async () => {
-      const res = await getPointOfSale(salemanCode, from || "", to || "");
+      const res = await getPointOfSale(salemanCode, from || "01-12-2025", to || "31-12-2025");
       if (res.data.data) {
         setPointOfSale(res.data.data);
       }
@@ -37,7 +38,7 @@ export default function RouteMap() {
 
   useEffect(() => {
     const loadSalemanTracking = async () => {
-      const res = await getSalemanTracking(salemanCode, "01-12-2025", "31-12-2025");
+      const res = await getSalemanTracking(salemanCode, from || "01-12-2025", to || "31-12-2025");
       if (res.data.data) {
         setSalemanTracking(res.data.data);
       }
@@ -566,7 +567,7 @@ export default function RouteMap() {
               cursor: "pointer",
             }}
           >
-            Xem lộ trình di chuyển
+            Xem lộ trình
           </button>
         )}
 
