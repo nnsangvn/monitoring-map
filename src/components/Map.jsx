@@ -2,13 +2,13 @@ import "@goongmaps/goong-js/dist/goong-js.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
 import "../index.css";
-import { direction, fetchSaleMan } from "../service/api.ts";
+import { fetchSaleMan } from "../service/api.ts";
 import { APP_COLORS } from "../constants/colors.js";
 import { USER_ICON_SVG } from "../constants/icon.js";
 import { createSVGMarker } from "../utils/marker.js";
+import accessToken from "./access_token.jsx";
 
-const GOONG_MAPTILES_KEY = import.meta.env.VITE_GOONG_MAPTILES_KEY;
-const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY;
+goongjs.accessToken = accessToken;
 
 export default function Map() {
   const mapContainer = useRef(null);
@@ -17,16 +17,6 @@ export default function Map() {
   const parentCode = params.get("parent_code");
 
   const [saleMan, setSaleMan] = useState([]);
-
-  // const loadDirection = async () => {
-  //   const res = await direction();
-  //   console.log("🚀 ~ loadDirection ~ res:", res.data);
-  //   // if (res.data) {
-  //   //   console.log("🚀 ~ loadDirection ~ res.data:", res.data);
-  //   // }
-  // };
-
-  // loadDirection();
 
   useEffect(() => {
     const loadSalesmen = async () => {
@@ -63,17 +53,6 @@ export default function Map() {
       .setLngLat(coords)
       .setHTML(html)
       .addTo(map);
-
-    // Thêm event listener cho button sau khi popup được render
-    // setTimeout(() => {
-    //   const routeButton = document.getElementById("route-button");
-    //   if (routeButton) {
-    //     routeButton.addEventListener("click", () => {
-    //       const salemanCode = routeButton.getAttribute("data-code");
-    //       window.location.href = `/?route=true&saleman_code=${salemanCode}`;
-    //     });
-    //   }
-    // }, 100);
   }, []);
 
   // ========== HÀM FLY TO SALESMAN ==========
@@ -320,12 +299,7 @@ export default function Map() {
   useEffect(() => {
     if (!mapContainer.current) return;
 
-    // Set accessToken trước khi tạo map
-    if (GOONG_MAPTILES_KEY) {
-      window.goongjs.accessToken = GOONG_MAPTILES_KEY;
-    }
-
-    const map = new window.goongjs.Map({
+    const map = new goongjs.Map({
       container: mapContainer.current,
       style: "https://tiles.goong.io/assets/goong_map_web.json",
       center: [106.72055776537006, 10.803239881310812],
@@ -335,166 +309,74 @@ export default function Map() {
     mapRef.current = map;
 
     map.on("load", () => {
-      // // Tìm layer symbol đầu tiên để chèn tuyến đường phía dưới chữ
-      // let firstSymbolId;
-      // const layers = map.getStyle().layers;
-      // for (let i = 0; i < layers.length; i++) {
-      //   if (layers[i].type === "symbol") {
-      //     firstSymbolId = layers[i].id;
-      //     break;
-      //   }
-      // }
+      // TẮT POI + NHÃN KHÔNG CẦN (chờ map load xong)
+      // Danh sách các layer cần GIỮ LẠI (whitelist)
+      const keepLayers = new Set([
+        // Layers của shops
+        "shops-clusters",
+        "shops-cluster-count",
+        "shops-unclustered-point",
+        "shops-simple-point",
+        "shops-labels",
+        // Layers của distributors
+        "distributors-clusters",
+        "distributors-cluster-count",
+        "distributors-unclustered-point",
+        "distributors-simple-point",
+        "distributors-labels",
+        // Layers của warehouses
+        "warehouses-clusters",
+        "warehouses-cluster-count",
+        "warehouses-unclustered-point",
+        "warehouses-simple-point",
+        "warehouses-labels",
+      ]);
 
-      // // Khởi tạo Goong SDK
-      // const goongClient = goongSdk({ accessToken: GOONG_API_KEY });
+      // Danh sách các pattern cần GIỮ LẠI (kiểm tra bằng includes)
+      const keepPatterns = [
+        "poi-airport", // Sân bay
+        "water",
+        "highway-shield-1", // Quốc Lộ
+        "highway-shield-2", // Tỉnh Lộ
+        "highway-name-major", // Tên đường chính
+        "highway-name-medium", // Tên đường chính
+        "road-oneway-spaced-large",
+        "road-major",
+        "lake-name_priority_2",
+        "place-city-capital-vietnam",
+        "place-city-capital", // Thủ đô HN
+        "place-city1", // TP trực thuộc TW
+        "place-city2", // Tỉnh
+        "place-village",
+        "ocean", // Biển đông
+        "place-island", // Đảo nhỏ
+        "place-archipelago", // Quần đảo hoàng sa/ Trường Sa
+      ];
 
-      // // Tọa độ gốc và đích (bạn có thể thay đổi)
-      // const origin = "10.80167766728457, 106.72081560591285";
-      // const destination = "10.800365395965589, 106.71821713931104";
-      // const waypoints = [
-      //   { coordinates: [10.801663713971633, 106.71895804653684] }, // Điểm 2
-      //   // ... thêm bao nhiêu cũng được (tối đa 25 điểm tổng cộng: origin + waypoints + destination)
-      // ];
+      // Hàm kiểm tra layer có nên giữ lại không
+      const shouldKeepLayer = (layerId) => {
+        // Kiểm tra trong whitelist
+        if (keepLayers.has(layerId)) return true;
 
-      // goongClient.directions
-      //   .getDirections({
-      //     origin: origin,
-      //     destination: destination,
-      //     // waypoints: waypoints,
-      //     vehicle: "car",
-      //   })
-      //   .send()
-      //   .then((response) => {
-      //     const route = response.body.routes[0];
+        // Kiểm tra các pattern
+        return keepPatterns.some((pattern) => layerId.includes(pattern));
+      };
 
-      //     let geojson = {
-      //       type: "Feature",
-      //       properties: {},
-      //       geometry: {
-      //         type: "LineString",
-      //         coordinates: [],
-      //       },
-      //     };
-
-      //     // Ưu tiên dùng overview_polyline nếu hợp lệ
-      //     if (route && route.overview_polyline && route.overview_polyline.points) {
-      //       try {
-      //         const decoded = polyline.toGeoJSON(route.overview_polyline.points);
-      //         if (decoded.coordinates && decoded.coordinates.length > 1) {
-      //           geojson.geometry.coordinates = decoded.coordinates;
-      //         }
-      //       } catch (e) {
-      //         console.warn("Lỗi decode polyline, dùng fallback", e);
-      //       }
-      //     }
-
-      //     // Fallback: nếu polyline lỗi hoặc quá ngắn → tự tạo đường thẳng từ start → end
-      //     if (geojson.geometry.coordinates.length < 2) {
-      //       console.warn("Dùng fallback LineString trực tiếp");
-      //       const start = route.legs[0].start_location;
-      //       const end = route.legs[0].end_location;
-      //       geojson.geometry.coordinates = [
-      //         [start.lng, start.lat],
-      //         [end.lng, end.lat],
-      //       ];
-      //     }
-
-      //     // Xóa source/layer cũ nếu đã tồn tại
-      //     if (map.getSource("route")) {
-      //       map.removeLayer("route");
-      //       map.removeSource("route");
-      //     }
-
-      //     // Thêm source
-      //     map.addSource("route", {
-      //       type: "geojson",
-      //       data: geojson,
-      //     });
-
-      //     // Thêm layer tuyến đường
-      //     map.addLayer(
-      //       {
-      //         id: "route",
-      //         type: "line",
-      //         source: "route",
-      //         layout: {
-      //           "line-join": "round",
-      //           "line-cap": "round",
-      //         },
-      //         paint: {
-      //           "line-color": "blue",
-      //           "line-width": 5,
-      //           "line-opacity": 0.9,
-      //         },
-      //       },
-      //       firstSymbolId
-      //     ); // vẽ dưới chữ
-
-      //     // Thêm marker điểm đầu và điểm cuối (tùy chọn)
-      //     new goongjs.Marker({ color: "#4CAF50" })
-      //       .setLngLat([route.legs[0].start_location.lng, route.legs[0].start_location.lat])
-      //       .addTo(map);
-
-      //     new goongjs.Marker({ color: "#f44336" })
-      //       .setLngLat([route.legs[0].end_location.lng, route.legs[0].end_location.lat])
-      //       .addTo(map);
-
-      //     // Fit bản đồ vừa với tuyến đường
-      //     const bounds = new goongjs.LngLatBounds();
-      //     geojson.geometry.coordinates.forEach((coord) => bounds.extend(coord));
-      //     map.fitBounds(bounds, { padding: 100, duration: 1500 });
-      //   })
-      //   .catch((err) => {
-      //     console.error("Lỗi gọi Directions API:", err);
-      //     alert("Không thể lấy tuyến đường. Kiểm tra API key và mạng!");
-      //   });
-
-      // // Direction Matrix
-      // goongClient.directions
-      //   .getDirectionMatrix({
-      //     origins: points.map((p) => p.coords.join(",")),
-      //     destinations: points.map((p) => p.coords.join(",")),
-      //     vehicle: "car",
-      //   })
-      //   .send()
-      //   .then((response) => {
-      //     console.log("🚀 ~ response:", response);
-      //   })
-      //   .catch((err) => {
-      //     console.error("Lỗi gọi Direction Matrix API:", err);
-      //     alert("Không thể lấy ma trận tuyến đường. Kiểm tra API key và mạng!");
-      //   });
-
-      // TẮT POI + NHÃN KHÔNG CẦN
+      // Duyệt qua tất cả layers và ẩn các symbol layer không cần thiết
       map.getStyle().layers.forEach((layer) => {
-        const id = layer.id;
-        // console.log("🚀 ~ id:", id);
-        const type = layer.type;
-        //   console.log("🚀 ~ type:", type);
-        if (
-          layer.type === "symbol" &&
-          !id.startsWith("salesman") &&
-          !id.startsWith("cluster") &&
-          !id.includes("poi-airport") && // Sân bay
-          !id.includes("water") &&
-          !id.includes("highway-shield-1") && // Quốc Lộ
-          !id.includes("highway-shield-2") && // Tỉnh Lộ
-          !id.includes("highway-name-major") && // Tên đường chính
-          !id.includes("highway-name-medium") && // Tên đường chính
-          !id.includes("road-oneway-spaced-large") &&
-          !id.includes("road-major") &&
-          !id.includes("lake-name_priority_2") &&
-          !id.includes("place-city-capital-vietnam") &&
-          !id.includes("place-city-capital") && // Thủ đô HN
-          !id.includes("place-city1") && // TP trực thuộc TW
-          !id.includes("place-city2") && // Tỉnh
-          !id.includes("place-village") &&
-          !id.includes("lake-name_priority_2") &&
-          !id.includes("ocean") && // Biển đông
-          !id.includes("place-island") && // Đảo nhỏ
-          !id.includes("place-archipelago") // Quần đảo hoàng sa/ Trường Sa
-        ) {
-          map.setLayoutProperty(id, "visibility", "none");
+        // Chỉ xử lý symbol layers (POI và labels)
+        if (layer.type === "symbol") {
+          const layerId = layer.id;
+
+          // Nếu layer không nằm trong danh sách giữ lại thì ẩn đi
+          if (!shouldKeepLayer(layerId)) {
+            try {
+              map.setLayoutProperty(layerId, "visibility", "none");
+            } catch (error) {
+              // Một số layer có thể không tồn tại hoặc đã bị xóa
+              console.warn(`Không thể ẩn layer: ${layerId}`, error);
+            }
+          }
         }
       });
 
@@ -572,9 +454,7 @@ export default function Map() {
       });
     });
 
-    return () => {
-      map.remove();
-    };
+    return () => map.remove();
   }, []); // CHỈ chạy 1 lần khi mount
 
   // ========== CẬP NHẬT DỮ LIỆU KHI saleMan THAY ĐỔI ==========
