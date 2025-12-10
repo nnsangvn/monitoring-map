@@ -15,7 +15,10 @@ export default function RouteMap() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const routeAnimationTimerRef = useRef(null); // Thêm ref để lưu timer
+  const routeAnimationStateRef = useRef({ currentIndex: 1, fullCoordinates: [], isPaused: false }); // Lưu trạng thái animation
   const [shouldDrawRoute, setShouldDrawRoute] = useState(false); // mặc định là false → không vẽ
+  const [isPaused, setIsPaused] = useState(false); // Trạng thái tạm dừng
+  const [isAnimating, setIsAnimating] = useState(false); // Trạng thái đang animation
   const params = new URLSearchParams(window.location.search);
   const salemanCode = params.get("saleman_code");
   const from = params.get("from");
@@ -287,143 +290,52 @@ export default function RouteMap() {
     loadImageFromSVG(pos_gray, "icon-pos-gray", onAllLoaded);
   }, []);
 
-  // ========== HÀM VẼ ROUTE TỪ SALEMAN TRACKING ==========
-  const updateRouteData = useCallback((map, coordinates) => {
-    if (!coordinates || coordinates.length === 0) return;
+  // ========== HÀM BẮT ĐẦU ANIMATION ROUTE ==========
+  const startRouteAnimation = useCallback((map, fullCoordinates, startIndex = 1) => {
+    if (!map || !map.getSource("route")) return;
 
-    // Clear timer cũ nếu có
-    if (routeAnimationTimerRef.current) {
-      clearInterval(routeAnimationTimerRef.current);
-      routeAnimationTimerRef.current = null;
-    }
+    setIsAnimating(true);
+    setIsPaused(false);
+    routeAnimationStateRef.current.isPaused = false;
+    routeAnimationStateRef.current.currentIndex = startIndex;
+    routeAnimationStateRef.current.fullCoordinates = fullCoordinates;
 
-    // Xóa source và layer cũ nếu có
-    if (map.getSource("route")) {
-      if (map.getLayer("route-line")) map.removeLayer("route-line");
-      if (map.getLayer("route-start-point")) map.removeLayer("route-start-point");
-      map.removeSource("route");
-    }
-
-    // Lưu full coordinate list để dùng sau
-    const fullCoordinates = [...coordinates];
-
-    // Bắt đầu chỉ với điểm đầu tiên
-    const initialData = {
-      type: "FeatureCollection",
-      features: [
-        {
-          type: "Feature",
-          geometry: {
-            type: "LineString",
-            coordinates: fullCoordinates.length > 0 ? [fullCoordinates[0]] : [],
-          },
-          properties: {},
-        },
-      ],
-    };
-
-    // Thêm source cho route với điểm đầu tiên
-    map.addSource("route", {
-      type: "geojson",
-      data: initialData,
-    });
-
-    // Thêm layer để vẽ đường đi
-    if (!map.getLayer("route-line")) {
-      map.addLayer({
-        id: "route-line",
-        type: "line",
-        source: "route",
-        layout: {
-          "line-join": "round",
-          "line-cap": "round",
-        },
-        paint: {
-          "line-color": "#3887be",
-          "line-opacity": 0.75,
-          "line-width": 5,
-        },
-      });
-    }
-
-    // Thêm điểm bắt đầu (start marker)
-    if (fullCoordinates.length > 0) {
-      const startPointGeoJSON = {
-        type: "FeatureCollection",
-        features: [
-          {
-            type: "Feature",
-            geometry: {
-              type: "Point",
-              coordinates: fullCoordinates[0],
-            },
-            properties: {
-              type: "start",
-            },
-          },
-        ],
-      };
-
-      map.addSource("route-start-point", {
-        type: "geojson",
-        data: startPointGeoJSON,
-      });
-
-      // Thêm layer cho điểm bắt đầu (có thể tùy chỉnh icon sau)
-      if (!map.getLayer("route-start-point")) {
-        map.addLayer({
-          id: "route-start-point",
-          type: "circle",
-          source: "route-start-point",
-          paint: {
-            "circle-radius": 8,
-            "circle-color": "#00ff00",
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#ffffff",
-          },
-        });
-      }
-    }
-
-    // Setup viewport - ease to điểm đầu tiên với animation mượt mà
-    if (fullCoordinates.length > 0) {
-      map.easeTo({
-        center: fullCoordinates[0],
-        zoom: 14,
-        duration: 2000,
-      });
-      map.setPitch(30);
-    }
-
-    // Animation: thêm từng điểm một theo interval
-    let i = 1; // Bắt đầu từ điểm thứ 2 (điểm đầu đã có)
     routeAnimationTimerRef.current = setInterval(() => {
-      if (i < fullCoordinates.length && map.getSource("route")) {
+      // Kiểm tra nếu đang pause thì không làm gì
+      if (routeAnimationStateRef.current.isPaused) {
+        return;
+      }
+
+      const i = routeAnimationStateRef.current.currentIndex;
+      const coords = routeAnimationStateRef.current.fullCoordinates;
+
+      if (i < coords.length && map.getSource("route")) {
         // Lấy data hiện tại
         const currentData = map.getSource("route")._data;
 
         // Thêm điểm mới vào coordinates
-        currentData.features[0].geometry.coordinates.push(fullCoordinates[i]);
+        currentData.features[0].geometry.coordinates.push(coords[i]);
 
         // Update source với data mới
         map.getSource("route").setData(currentData);
 
         // Pan map đến điểm mới
-        map.panTo(fullCoordinates[i]);
+        map.panTo(coords[i]);
 
-        i++;
+        routeAnimationStateRef.current.currentIndex = i + 1;
       } else {
         // Dừng animation khi đã vẽ hết
         if (routeAnimationTimerRef.current) {
           clearInterval(routeAnimationTimerRef.current);
           routeAnimationTimerRef.current = null;
         }
+        setIsAnimating(false);
 
         // Fit bounds để hiển thị toàn bộ route sau khi vẽ xong
-        if (fullCoordinates.length > 0) {
-          const bounds = fullCoordinates.reduce((bounds, coord) => {
+        if (coords.length > 0) {
+          const bounds = coords.reduce((bounds, coord) => {
             return bounds.extend(coord);
-          }, new window.goongjs.LngLatBounds(fullCoordinates[0], fullCoordinates[0]));
+          }, new window.goongjs.LngLatBounds(coords[0], coords[0]));
 
           map.fitBounds(bounds, {
             padding: { top: 50, bottom: 50, left: 50, right: 50 },
@@ -433,6 +345,125 @@ export default function RouteMap() {
       }
     }, 200); // Interval 200ms
   }, []);
+
+  // ========== HÀM VẼ ROUTE TỪ SALEMAN TRACKING ==========
+  const updateRouteData = useCallback(
+    (map, coordinates) => {
+      if (!coordinates || coordinates.length === 0) return;
+
+      // Set isAnimating ngay từ đầu để các nút điều khiển hiển thị
+      setIsAnimating(true);
+      setIsPaused(false);
+
+      // Clear timer cũ nếu có
+      if (routeAnimationTimerRef.current) {
+        clearInterval(routeAnimationTimerRef.current);
+        routeAnimationTimerRef.current = null;
+      }
+
+      // Xóa source và layer cũ nếu có
+      if (map.getSource("route")) {
+        if (map.getLayer("route-line")) map.removeLayer("route-line");
+        if (map.getLayer("route-start-point")) map.removeLayer("route-start-point");
+        map.removeSource("route");
+      }
+
+      // Lưu full coordinate list để dùng sau
+      const fullCoordinates = [...coordinates];
+
+      // Bắt đầu chỉ với điểm đầu tiên
+      const initialData = {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: fullCoordinates.length > 0 ? [fullCoordinates[0]] : [],
+            },
+            properties: {},
+          },
+        ],
+      };
+
+      // Thêm source cho route với điểm đầu tiên
+      map.addSource("route", {
+        type: "geojson",
+        data: initialData,
+      });
+
+      // Thêm layer để vẽ đường đi
+      if (!map.getLayer("route-line")) {
+        map.addLayer({
+          id: "route-line",
+          type: "line",
+          source: "route",
+          layout: {
+            "line-join": "round",
+            "line-cap": "round",
+          },
+          paint: {
+            "line-color": "#3887be",
+            "line-opacity": 0.75,
+            "line-width": 5,
+          },
+        });
+      }
+
+      // Thêm điểm bắt đầu (start marker)
+      if (fullCoordinates.length > 0) {
+        const startPointGeoJSON = {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates: fullCoordinates[0],
+              },
+              properties: {
+                type: "start",
+              },
+            },
+          ],
+        };
+
+        map.addSource("route-start-point", {
+          type: "geojson",
+          data: startPointGeoJSON,
+        });
+
+        // Thêm layer cho điểm bắt đầu (có thể tùy chỉnh icon sau)
+        if (!map.getLayer("route-start-point")) {
+          map.addLayer({
+            id: "route-start-point",
+            type: "circle",
+            source: "route-start-point",
+            paint: {
+              "circle-radius": 8,
+              "circle-color": "#00ff00",
+              "circle-stroke-width": 2,
+              "circle-stroke-color": "#ffffff",
+            },
+          });
+        }
+      }
+
+      // Setup viewport - ease to điểm đầu tiên với animation mượt mà
+      if (fullCoordinates.length > 0) {
+        map.easeTo({
+          center: fullCoordinates[0],
+          zoom: 14,
+          duration: 2000,
+        });
+        map.setPitch(30);
+      }
+
+      // Bắt đầu animation
+      startRouteAnimation(map, fullCoordinates, 1);
+    },
+    [startRouteAnimation]
+  );
 
   useEffect(() => {
     if (!mapContainer.current) return;
@@ -624,6 +655,60 @@ export default function RouteMap() {
     };
   }, []);
 
+  // ========== HÀM XỬ LÝ TẠM DỪNG ==========
+  const handlePause = useCallback(() => {
+    routeAnimationStateRef.current.isPaused = true;
+    setIsPaused(true);
+  }, []);
+
+  // ========== HÀM XỬ LÝ TIẾP TỤC ==========
+  const handleResume = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !map.loaded() || !map.getSource("route")) return;
+
+    const { currentIndex, fullCoordinates } = routeAnimationStateRef.current;
+
+    // Nếu đã vẽ hết thì không làm gì
+    if (currentIndex >= fullCoordinates.length) {
+      setIsAnimating(false);
+      return;
+    }
+
+    // Tiếp tục animation từ vị trí hiện tại
+    routeAnimationStateRef.current.isPaused = false;
+    setIsPaused(false);
+
+    // Nếu timer đã bị clear, tạo lại
+    if (!routeAnimationTimerRef.current) {
+      startRouteAnimation(map, fullCoordinates, currentIndex);
+    }
+  }, [startRouteAnimation]);
+
+  // ========== HÀM XỬ LÝ DỪNG LUÔN ==========
+  const handleStop = useCallback(() => {
+    // Clear timer
+    if (routeAnimationTimerRef.current) {
+      clearInterval(routeAnimationTimerRef.current);
+      routeAnimationTimerRef.current = null;
+    }
+
+    // Xóa route trên map
+    const map = mapRef.current;
+    if (map && map.loaded()) {
+      if (map.getSource("route")) {
+        if (map.getLayer("route-line")) map.removeLayer("route-line");
+        if (map.getLayer("route-start-point")) map.removeLayer("route-start-point");
+        map.removeSource("route");
+      }
+    }
+
+    // Reset tất cả state
+    setShouldDrawRoute(false);
+    setIsPaused(false);
+    setIsAnimating(false);
+    routeAnimationStateRef.current = { currentIndex: 1, fullCoordinates: [], isPaused: false };
+  }, []);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.loaded()) return;
@@ -658,6 +743,87 @@ export default function RouteMap() {
         >
           Xem lộ trình
         </button>
+      )}
+
+      {/* Các nút điều khiển khi đang xem lộ trình */}
+      {shouldDrawRoute && routeCoordinates.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 10,
+            display: "flex",
+            gap: "12px",
+            background: "white",
+            padding: "12px",
+            borderRadius: "8px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+          }}
+        >
+          {/* Hiển thị nút Tạm dừng khi đang animation và chưa pause */}
+          {isAnimating && !isPaused && (
+            <button
+              onClick={handlePause}
+              style={{
+                padding: "10px 20px",
+                background: "#f39c12",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "14px",
+                fontWeight: "bold",
+                cursor: "pointer",
+                transition: "background 0.2s",
+              }}
+              onMouseEnter={(e) => (e.target.style.background = "#e67e22")}
+              onMouseLeave={(e) => (e.target.style.background = "#f39c12")}
+            >
+              Tạm dừng
+            </button>
+          )}
+          {/* Hiển thị nút Tiếp tục khi đang pause */}
+          {isPaused && (
+            <button
+              onClick={handleResume}
+              style={{
+                padding: "10px 20px",
+                background: "#27ae60",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "14px",
+                fontWeight: "bold",
+                cursor: "pointer",
+                transition: "background 0.2s",
+              }}
+              onMouseEnter={(e) => (e.target.style.background = "#229954")}
+              onMouseLeave={(e) => (e.target.style.background = "#27ae60")}
+            >
+              Tiếp tục
+            </button>
+          )}
+          {/* Luôn hiển thị nút Dừng luôn */}
+          <button
+            onClick={handleStop}
+            style={{
+              padding: "10px 20px",
+              background: "#e74c3c",
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              fontSize: "14px",
+              fontWeight: "bold",
+              cursor: "pointer",
+              transition: "background 0.2s",
+            }}
+            onMouseEnter={(e) => (e.target.style.background = "#c0392b")}
+            onMouseLeave={(e) => (e.target.style.background = "#e74c3c")}
+          >
+            Dừng
+          </button>
+        </div>
       )}
 
       <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} />
