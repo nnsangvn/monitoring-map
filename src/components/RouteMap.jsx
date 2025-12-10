@@ -2,15 +2,14 @@ import "@goongmaps/goong-js/dist/goong-js.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
 import "../index.css";
-import { getPointOfSale, getSalemanTracking } from "../service/api";
 import { APP_COLORS } from "../constants/colors";
+import { POS_ICON_SVG, USER_ICON_SVG } from "../constants/icon";
+import { createSVGMarker } from "../utils/marker";
+import accessToken from "./access_token.jsx";
+import { usePointofSale } from "../hooks/usePointofSale.js";
+import { useSalemanRouteTracking } from "../hooks/useSalemanRouteTracking.js";
 
-const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY;
-const GOONG_MAPTILES_KEY = import.meta.env.VITE_GOONG_MAPTILES_KEY;
-
-// SVG icon cho user (giữ nguyên từ Map.jsx)
-const POS_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="12" cy="14" r="16" fill="white"/>
-	<path fill="currentColor" d="M19.148 2.971A2.01 2.01 0 0 0 17.434 2H6.566c-.698 0-1.355.372-1.714.971L2.143 7.485A1 1 0 0 0 2 8a3.97 3.97 0 0 0 1 2.618V19c0 1.103.897 2 2 2h14c1.103 0 2-.897 2-2v-8.382A3.97 3.97 0 0 0 22 8a1 1 0 0 0-.143-.515zm.836 5.28A2 2 0 0 1 18 10c-1.103 0-2-.897-2-2c0-.068-.025-.128-.039-.192l.02-.004L15.22 4h2.214zM10.819 4h2.361l.813 4.065C13.958 9.137 13.08 10 12 10s-1.958-.863-1.993-1.935zM6.566 4H8.78l-.76 3.804l.02.004C8.025 7.872 8 7.932 8 8c0 1.103-.897 2-2 2a2 2 0 0 1-1.984-1.749zM10 19v-3h4v3zm6 0v-3c0-1.103-.897-2-2-2h-4c-1.103 0-2 .897-2 2v3H5v-7.142c.321.083.652.142 1 .142a4 4 0 0 0 3-1.357c.733.832 1.807 1.357 3 1.357s2.267-.525 3-1.357A4 4 0 0 0 18 12c.348 0 .679-.059 1-.142V19z" stroke-width="1" stroke="currentColor"/>`;
+goongjs.accessToken = accessToken;
 
 export default function RouteMap() {
   const mapContainer = useRef(null);
@@ -21,33 +20,15 @@ export default function RouteMap() {
   const salemanCode = params.get("saleman_code");
   const from = params.get("from");
   const to = params.get("to");
-  // Danh sách điểm bán
-  const [pointOfSale, setPointOfSale] = useState([]);
-  const [salemanTracking, setSalemanTracking] = useState([]);
+
+  // Sử dụng hooks để fetch data
+  const pointOfSale = usePointofSale(salemanCode, from, to);
+  const salemanTracking = useSalemanRouteTracking(salemanCode, from, to);
+
   const [routeCoordinates, setRouteCoordinates] = useState([]);
 
   useEffect(() => {
-    const loadPointOfSale = async () => {
-      const res = await getPointOfSale(salemanCode, from || "01-12-2025", to || "31-12-2025");
-      if (res.data.data) {
-        setPointOfSale(res.data.data);
-      }
-    };
-    loadPointOfSale();
-  }, [salemanCode, from, to]);
-
-  useEffect(() => {
-    const loadSalemanTracking = async () => {
-      const res = await getSalemanTracking(salemanCode, from || "01-12-2025", to || "31-12-2025");
-      if (res.data.data) {
-        setSalemanTracking(res.data.data);
-      }
-    };
-    loadSalemanTracking();
-  }, [salemanCode, from, to]);
-
-  useEffect(() => {
-    if (salemanTracking.length === 0) {
+    if (salemanTracking?.length === 0) {
       setRouteCoordinates([]);
       return;
     }
@@ -81,22 +62,114 @@ export default function RouteMap() {
           <li><strong>Trạng thái:</strong> ${pointOfSale.marker_name || "N/A"}</li>
         </ul>
       </div>`;
-    new window.goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
+    new goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
       .setLngLat(coords)
       .setHTML(html)
       .addTo(map);
   }, []);
 
-  // ========== CREATE SVG MARKER ==========
-  const createSVGMarker = (color, iconSvg) => {
-    const coloredIcon = iconSvg.replace(/currentColor/g, color);
-    return `<svg width="32" height="48" viewBox="0 0 48 64" xmlns="http://www.w3.org/2000/svg">
-      <path d="M24 0C10.745 0 0 10.745 0 24c0 18.273 24 40 24 40s24-21.727 24-40C48 10.745 37.255 0 24 0z" fill="${color}" stroke="${color}"/>
-      <g transform="translate(12, 9) scale(1)">
-        ${coloredIcon.replace(/<svg[^>]*>|<\/svg>/g, "")}
-      </g>
-    </svg>`;
-  };
+  // POPUP SALEMAN
+  const showSalemanPopup = useCallback((map, salemanCode, coords) => {
+    const html = `
+      <div class="salesman-popup">
+        <ul>
+          <li> <strong>Nhân viên</strong> </li>
+          <li><strong>Code:</strong> ${salemanCode}</li>
+          <li><strong>Vị trí hiện tại</strong></li>
+        </ul>
+      </div>`;
+    new goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
+      .setLngLat(coords)
+      .setHTML(html)
+      .addTo(map);
+  }, []);
+
+  // ========== HÀM VẼ MARKER CHO SALEMAN ==========
+  const updateSalemanMarker = useCallback(
+    (map, coordinates) => {
+      if (!coordinates || coordinates.length === 0) return;
+
+      // Xóa source và layer cũ nếu có
+      if (map.getSource("saleman-marker")) {
+        if (map.getLayer("saleman-marker-point")) map.removeLayer("saleman-marker-point");
+        map.removeSource("saleman-marker");
+      }
+
+      // Lấy điểm cuối cùng làm vị trí hiện tại của saleman
+      const currentPosition = coordinates[coordinates.length - 1];
+
+      if (!currentPosition) return;
+
+      // Tạo GeoJSON cho marker saleman
+      const salemanMarkerGeoJSON = {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: currentPosition,
+            },
+            properties: {
+              salemanCode: salemanCode,
+            },
+          },
+        ],
+      };
+
+      // Thêm source cho saleman marker
+      map.addSource("saleman-marker", {
+        type: "geojson",
+        data: salemanMarkerGeoJSON,
+      });
+
+      // Tạo icon cho saleman (màu xanh)
+      const saleman_icon = createSVGMarker(APP_COLORS.GREEN, USER_ICON_SVG);
+
+      // Hàm load image từ SVG
+      const loadImageFromSVG = (svg, name, callback) => {
+        const img = new Image();
+        img.onload = () => {
+          map.addImage(name, img);
+          callback();
+        };
+        img.src = "data:image/svg+xml;base64," + btoa(svg);
+      };
+
+      loadImageFromSVG(saleman_icon, "icon-saleman-current", () => {
+        // Thêm layer cho saleman marker
+        if (!map.getLayer("saleman-marker-point")) {
+          map.addLayer({
+            id: "saleman-marker-point",
+            type: "symbol",
+            source: "saleman-marker",
+            layout: {
+              "icon-image": "icon-saleman-current",
+              "icon-size": 1.0,
+              "icon-allow-overlap": true,
+              "icon-anchor": "bottom",
+            },
+          });
+
+          // Click vào marker → hiện popup
+          map.on("click", "saleman-marker-point", (e) => {
+            const feature = e.features[0];
+            showSalemanPopup(map, salemanCode, feature.geometry.coordinates);
+          });
+
+          // Hover effect
+          map.on("mouseenter", "saleman-marker-point", () => {
+            map.getCanvas().style.cursor = "pointer";
+          });
+
+          map.on("mouseleave", "saleman-marker-point", () => {
+            map.getCanvas().style.cursor = "";
+          });
+        }
+      });
+    },
+    [salemanCode, showSalemanPopup]
+  );
 
   // ========== HÀM CẬP NHẬT DỮ LIỆU ĐIỂM BÁN ==========
   const updatePointOfSaleData = useCallback((map, points) => {
@@ -312,11 +385,12 @@ export default function RouteMap() {
       }
     }
 
-    // Setup viewport - jump to điểm đầu tiên
+    // Setup viewport - ease to điểm đầu tiên với animation mượt mà
     if (fullCoordinates.length > 0) {
-      map.jumpTo({
+      map.easeTo({
         center: fullCoordinates[0],
         zoom: 14,
+        duration: 2000,
       });
       map.setPitch(30);
     }
@@ -353,34 +427,17 @@ export default function RouteMap() {
 
           map.fitBounds(bounds, {
             padding: { top: 50, bottom: 50, left: 50, right: 50 },
-            duration: 1000,
+            duration: 2000,
           });
         }
       }
-    }, 200); // Interval 100ms
-
-    // Fit map để hiển thị toàn bộ route
-    if (coordinates.length > 0) {
-      const bounds = coordinates.reduce((bounds, coord) => {
-        return bounds.extend(coord);
-      }, new window.goongjs.LngLatBounds(coordinates[0], coordinates[0]));
-
-      map.fitBounds(bounds, {
-        padding: { top: 50, bottom: 50, left: 50, right: 50 },
-        duration: 1000,
-      });
-    }
+    }, 200); // Interval 200ms
   }, []);
 
   useEffect(() => {
     if (!mapContainer.current) return;
 
-    // Set accessToken trước khi tạo map
-    if (GOONG_MAPTILES_KEY) {
-      window.goongjs.accessToken = GOONG_MAPTILES_KEY;
-    }
-
-    const map = new window.goongjs.Map({
+    const map = new goongjs.Map({
       container: mapContainer.current,
       // style: "https://tiles.goong.io/assets/navigation_day.json",
       style: "https://tiles.goong.io/assets/goong_map_web.json",
@@ -391,44 +448,80 @@ export default function RouteMap() {
     mapRef.current = map;
 
     map.on("load", () => {
-      // console.log("Map loaded");
+      // TẮT POI + NHÃN KHÔNG CẦN (chờ map load xong)
+      // Danh sách các layer cần GIỮ LẠI (whitelist)
+      const keepLayers = new Set([
+        // Layers của shops
+        "shops-clusters",
+        "shops-cluster-count",
+        "shops-unclustered-point",
+        "shops-simple-point",
+        "shops-labels",
+        // Layers của distributors
+        "distributors-clusters",
+        "distributors-cluster-count",
+        "distributors-unclustered-point",
+        "distributors-simple-point",
+        "distributors-labels",
+        // Layers của warehouses
+        "warehouses-clusters",
+        "warehouses-cluster-count",
+        "warehouses-unclustered-point",
+        "warehouses-simple-point",
+        "warehouses-labels",
+      ]);
 
-      // TẮT POI + NHÃN KHÔNG CẦN
+      // Danh sách các pattern cần GIỮ LẠI (kiểm tra bằng includes)
+      const keepPatterns = [
+        "poi-airport", // Sân bay
+        "water",
+        "highway-shield-1", // Quốc Lộ
+        "highway-shield-2", // Tỉnh Lộ
+        "highway-name-major", // Tên đường chính
+        "highway-name-medium", // Tên đường chính
+        "road-oneway-spaced-large",
+        "road-major",
+        "lake-name_priority_2",
+        "place-city-capital-vietnam",
+        "place-city-capital", // Thủ đô HN
+        "place-city1", // TP trực thuộc TW
+        "place-city2", // Tỉnh
+        "place-village",
+        "ocean", // Biển đông
+        "place-island", // Đảo nhỏ
+        "place-archipelago", // Quần đảo hoàng sa/ Trường Sa
+      ];
+
+      // Hàm kiểm tra layer có nên giữ lại không
+      const shouldKeepLayer = (layerId) => {
+        // Kiểm tra trong whitelist
+        if (keepLayers.has(layerId)) return true;
+
+        // Kiểm tra các pattern
+        return keepPatterns.some((pattern) => layerId.includes(pattern));
+      };
+
+      // Duyệt qua tất cả layers và ẩn các symbol layer không cần thiết
       map.getStyle().layers.forEach((layer) => {
-        const id = layer.id;
-        // console.log("🚀 ~ id:", id);
-        const type = layer.type;
-        //   console.log("🚀 ~ type:", type);
-        if (
-          layer.type === "symbol" &&
-          !id.startsWith("salesman") &&
-          !id.startsWith("cluster") &&
-          !id.includes("poi-airport") && // Sân bay
-          !id.includes("water") &&
-          !id.includes("highway-shield-1") && // Quốc Lộ
-          !id.includes("highway-shield-2") && // Tỉnh Lộ
-          !id.includes("highway-name-major") && // Tên đường chính
-          !id.includes("highway-name-medium") && // Tên đường chính
-          !id.includes("road-oneway-spaced-large") &&
-          !id.includes("road-major") &&
-          !id.includes("lake-name_priority_2") &&
-          !id.includes("place-city-capital-vietnam") &&
-          !id.includes("place-city-capital") && // Thủ đô HN
-          !id.includes("place-city1") && // TP trực thuộc TW
-          !id.includes("place-city2") && // Tỉnh
-          !id.includes("place-village") &&
-          !id.includes("lake-name_priority_2") &&
-          !id.includes("ocean") && // Biển đông
-          !id.includes("place-island") && // Đảo nhỏ
-          !id.includes("place-archipelago") // Quần đảo hoàng sa/ Trường Sa
-        ) {
-          map.setLayoutProperty(id, "visibility", "none");
+        // Chỉ xử lý symbol layers (POI và labels)
+        if (layer.type === "symbol") {
+          const layerId = layer.id;
+
+          // Nếu layer không nằm trong danh sách giữ lại thì ẩn đi
+          if (!shouldKeepLayer(layerId)) {
+            try {
+              map.setLayoutProperty(layerId, "visibility", "none");
+            } catch (error) {
+              // Một số layer có thể không tồn tại hoặc đã bị xóa
+              console.warn(`Không thể ẩn layer: ${layerId}`, error);
+            }
+          }
         }
       });
 
       // === 1. NÚT ZOOM + / − ===
       map.addControl(
-        new window.goongjs.NavigationControl({
+        new goongjs.NavigationControl({
           showCompass: false,
           showZoom: true,
           visualizePitch: false,
@@ -438,7 +531,7 @@ export default function RouteMap() {
 
       // === 2. NÚT LA BÀN (Compass) ===
       map.addControl(
-        new window.goongjs.NavigationControl({
+        new goongjs.NavigationControl({
           showZoom: false,
           showCompass: true,
           visualizePitch: false,
@@ -448,7 +541,7 @@ export default function RouteMap() {
 
       // === 3. NÚT ĐỊNH VỊ HIỆN TẠI ===
       map.addControl(
-        new window.goongjs.GeolocateControl({
+        new goongjs.GeolocateControl({
           positionOptions: { enableHighAccuracy: true },
           trackUserLocation: true,
           showAccuracyCircle: true,
@@ -457,10 +550,8 @@ export default function RouteMap() {
         "top-right"
       );
 
-      // // Nếu đã có dữ liệu pointOfSale, cập nhật ngay
-      // if (pointOfSale.length > 0) {
-      //   updatePointOfSaleData(map, pointOfSale);
-      // }
+      // === 4. NÚT FULLSCREEN ===
+      map.addControl(new goongjs.FullscreenControl());
 
       // Setup event handlers cho click và hover
       // Click vào điểm bán → hiện popup (có thể tùy chỉnh sau)
@@ -515,6 +606,14 @@ export default function RouteMap() {
     updatePointOfSaleData(mapRef.current, pointOfSale);
   }, [pointOfSale, updatePointOfSaleData]);
 
+  // ========== CẬP NHẬT MARKER SALEMAN KHI CÓ DỮ LIỆU TRACKING ==========
+  useEffect(() => {
+    if (!mapRef.current || !mapRef.current.loaded()) return;
+    if (routeCoordinates.length === 0) return;
+
+    updateSalemanMarker(mapRef.current, routeCoordinates);
+  }, [routeCoordinates, updateSalemanMarker]);
+
   // Cleanup timer khi component unmount
   useEffect(() => {
     return () => {
@@ -534,45 +633,34 @@ export default function RouteMap() {
     updateRouteData(map, routeCoordinates);
   }, [shouldDrawRoute, routeCoordinates, updateRouteData]);
 
-  // ========== VẼ ROUTE KHI CÓ COORDINATES ==========
-  // useEffect(() => {
-  //   if (!mapRef.current || !mapRef.current.loaded()) return;
-  //   if (routeCoordinates.length === 0) return;
-
-  //   updateRouteData(mapRef.current, routeCoordinates);
-  // }, [routeCoordinates, updateRouteData]);
-
   return (
-    <>
-      {/* <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} /> */}
-      <div style={{ position: "relative", width: "100%", height: "100vh" }}>
-        {/* Nút bấm nổi trên bản đồ */}
-        {routeCoordinates.length > 0 && !shouldDrawRoute && (
-          <button
-            onClick={() => setShouldDrawRoute(true)}
-            style={{
-              position: "absolute",
-              top: "20px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 10,
-              padding: "12px 24px",
-              background: "#3887be",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              fontSize: "16px",
-              fontWeight: "bold",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-              cursor: "pointer",
-            }}
-          >
-            Xem lộ trình
-          </button>
-        )}
+    <div style={{ position: "relative", width: "100%", height: "100vh" }}>
+      {/* Nút bấm nổi trên bản đồ */}
+      {routeCoordinates.length > 0 && !shouldDrawRoute && (
+        <button
+          onClick={() => setShouldDrawRoute(true)}
+          style={{
+            position: "absolute",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 10,
+            padding: "12px 24px",
+            background: "#3887be",
+            color: "white",
+            border: "none",
+            borderRadius: "8px",
+            fontSize: "16px",
+            fontWeight: "bold",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            cursor: "pointer",
+          }}
+        >
+          Xem lộ trình
+        </button>
+      )}
 
-        <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} />
-      </div>
-    </>
+      <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} />
+    </div>
   );
 }

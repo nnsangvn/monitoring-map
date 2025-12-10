@@ -2,49 +2,24 @@ import "@goongmaps/goong-js/dist/goong-js.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
 import "../index.css";
-import { direction, fetchSaleMan } from "../service/api.ts";
 import { APP_COLORS } from "../constants/colors.js";
+import { USER_ICON_SVG } from "../constants/icon.js";
+import { createSVGMarker } from "../utils/marker.js";
+import accessToken from "./access_token.jsx";
+import { useSaleMan } from "../hooks/useSaleMan.js";
 
-const GOONG_MAPTILES_KEY = import.meta.env.VITE_GOONG_MAPTILES_KEY;
-const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY;
-// SVG icon cho user
-const USER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="12" cy="14" r="16" fill="white"/><g fill="none" stroke="currentColor" stroke-width="1.5"><circle fill="none" cx="12" cy="6" r="4"/><path d="M20 17.5c0 2.485 0 4.5-8 4.5s-8-2.015-8-4.5S7.582 13 12 13s8 2.015 8 4.5Z"/></g></svg>`;
+goongjs.accessToken = accessToken;
 
 export default function Map() {
-  const mapContainer = useRef(null);
+  const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const params = new URLSearchParams(window.location.search);
   const parentCode = params.get("parent_code");
 
-  const [saleMan, setSaleMan] = useState([]);
+  const saleMan = useSaleMan(parentCode);
+  const [isMapLoaded, setIsMapLoaded] = useState(false); // Thêm state để track map đã load
 
-  // const loadDirection = async () => {
-  //   const res = await direction();
-  //   console.log("🚀 ~ loadDirection ~ res:", res.data);
-  //   // if (res.data) {
-  //   //   console.log("🚀 ~ loadDirection ~ res.data:", res.data);
-  //   // }
-  // };
-
-  // loadDirection();
-
-  useEffect(() => {
-    const loadSalesmen = async () => {
-      const res = await fetchSaleMan(parentCode);
-      if (res.data.data) {
-        setSaleMan(res.data.data);
-      }
-    };
-    loadSalesmen();
-  }, []);
-
-  // Log saleMan khi state thay đổi
-  useEffect(() => {
-    // console.log("🚀 ~ saleMan state:", saleMan);
-    // console.log("🚀 ~ saleMan length:", saleMan.length);
-  }, [saleMan]);
-
-  // ========== HÀM HIỂN THỊ POPUP ==========
+  // === SHOW SALESMAN POPUP ===
   const showSalesmanPopup = useCallback((map, salesman, coords) => {
     const html = `
       <div class="salesman-popup">
@@ -63,20 +38,9 @@ export default function Map() {
       .setLngLat(coords)
       .setHTML(html)
       .addTo(map);
-
-    // Thêm event listener cho button sau khi popup được render
-    // setTimeout(() => {
-    //   const routeButton = document.getElementById("route-button");
-    //   if (routeButton) {
-    //     routeButton.addEventListener("click", () => {
-    //       const salemanCode = routeButton.getAttribute("data-code");
-    //       window.location.href = `/?route=true&saleman_code=${salemanCode}`;
-    //     });
-    //   }
-    // }, 100);
   }, []);
 
-  // ========== HÀM FLY TO SALESMAN ==========
+  // === FLY TO SALESMAN ===
   const flyToSalesman = useCallback(
     (map, salesmen) => {
       if (!parentCode) {
@@ -117,18 +81,7 @@ export default function Map() {
     [showSalesmanPopup]
   );
 
-  // ========== CREATE SVG MARKER ==========
-  const createSVGMarker = (color, iconSvg) => {
-    const coloredIcon = iconSvg.replace(/currentColor/g, color);
-    return `<svg width="32" height="48" viewBox="0 0 48 64" xmlns="http://www.w3.org/2000/svg">
-      <path d="M24 0C10.745 0 0 10.745 0 24c0 18.273 24 40 24 40s24-21.727 24-40C48 10.745 37.255 0 24 0z" fill="${color}"/>
-      <g transform="translate(12, 9) scale(1)">
-        ${coloredIcon.replace(/<svg[^>]*>|<\/svg>/g, "")}
-      </g>
-    </svg>`;
-  };
-
-  // ========== CREATE PULSING DOT ==========
+  // === CREATE PULSING DOT ===
   const createPulsingDot = (color = "rgba(0, 181, 255, 1)") => {
     const size = 150;
 
@@ -184,7 +137,7 @@ export default function Map() {
     };
   };
 
-  // ========== HÀM CẬP NHẬT DỮ LIỆU NHÂN VIÊN ==========
+  // === UPDATE SALESMEN DATA ===
   const updateSalesmenData = useCallback((map, salesmen) => {
     // Xóa source và layers cũ nếu có
     if (map.getSource("salesmen")) {
@@ -327,17 +280,12 @@ export default function Map() {
     loadImageFromSVG(saleman_gray, "icon-saleman-gray", onAllLoaded);
   }, []);
 
-  // ========== TẠO MAP (CHỈ 1 LẦN) ==========
+  // === KHỞI TẠO MAP (CHỈ 1 LẦN) ===
   useEffect(() => {
-    if (!mapContainer.current) return;
+    if (!mapContainerRef.current) return;
 
-    // Set accessToken trước khi tạo map
-    if (GOONG_MAPTILES_KEY) {
-      window.goongjs.accessToken = GOONG_MAPTILES_KEY;
-    }
-
-    const map = new window.goongjs.Map({
-      container: mapContainer.current,
+    const map = new goongjs.Map({
+      container: mapContainerRef.current,
       style: "https://tiles.goong.io/assets/goong_map_web.json",
       center: [106.72055776537006, 10.803239881310812],
       zoom: 12,
@@ -346,172 +294,82 @@ export default function Map() {
     mapRef.current = map;
 
     map.on("load", () => {
-      // // Tìm layer symbol đầu tiên để chèn tuyến đường phía dưới chữ
-      // let firstSymbolId;
-      // const layers = map.getStyle().layers;
-      // for (let i = 0; i < layers.length; i++) {
-      //   if (layers[i].type === "symbol") {
-      //     firstSymbolId = layers[i].id;
-      //     break;
-      //   }
-      // }
+      setIsMapLoaded(true); // Đánh dấu map đã load
 
-      // // Khởi tạo Goong SDK
-      // const goongClient = goongSdk({ accessToken: GOONG_API_KEY });
+      // TẮT POI + NHÃN KHÔNG CẦN (chờ map load xong)
+      // Danh sách các layer cần GIỮ LẠI (whitelist)
+      const keepLayers = new Set([
+        // Layers của shops
+        "shops-clusters",
+        "shops-cluster-count",
+        "shops-unclustered-point",
+        "shops-simple-point",
+        "shops-labels",
+        // Layers của distributors
+        "distributors-clusters",
+        "distributors-cluster-count",
+        "distributors-unclustered-point",
+        "distributors-simple-point",
+        "distributors-labels",
+        // Layers của warehouses
+        "warehouses-clusters",
+        "warehouses-cluster-count",
+        "warehouses-unclustered-point",
+        "warehouses-simple-point",
+        "warehouses-labels",
+      ]);
 
-      // // Tọa độ gốc và đích (bạn có thể thay đổi)
-      // const origin = "10.80167766728457, 106.72081560591285";
-      // const destination = "10.800365395965589, 106.71821713931104";
-      // const waypoints = [
-      //   { coordinates: [10.801663713971633, 106.71895804653684] }, // Điểm 2
-      //   // ... thêm bao nhiêu cũng được (tối đa 25 điểm tổng cộng: origin + waypoints + destination)
-      // ];
+      // Danh sách các pattern cần GIỮ LẠI (kiểm tra bằng includes)
+      const keepPatterns = [
+        "poi-airport", // Sân bay
+        "water",
+        "highway-shield-1", // Quốc Lộ
+        "highway-shield-2", // Tỉnh Lộ
+        "highway-name-major", // Tên đường chính
+        "highway-name-medium", // Tên đường chính
+        "road-oneway-spaced-large",
+        "road-major",
+        "lake-name_priority_2",
+        "place-city-capital-vietnam",
+        "place-city-capital", // Thủ đô HN
+        "place-city1", // TP trực thuộc TW
+        "place-city2", // Tỉnh
+        "place-village",
+        "ocean", // Biển đông
+        "place-island", // Đảo nhỏ
+        "place-archipelago", // Quần đảo hoàng sa/ Trường Sa
+      ];
 
-      // goongClient.directions
-      //   .getDirections({
-      //     origin: origin,
-      //     destination: destination,
-      //     // waypoints: waypoints,
-      //     vehicle: "car",
-      //   })
-      //   .send()
-      //   .then((response) => {
-      //     const route = response.body.routes[0];
+      // Hàm kiểm tra layer có nên giữ lại không
+      const shouldKeepLayer = (layerId) => {
+        // Kiểm tra trong whitelist
+        if (keepLayers.has(layerId)) return true;
 
-      //     let geojson = {
-      //       type: "Feature",
-      //       properties: {},
-      //       geometry: {
-      //         type: "LineString",
-      //         coordinates: [],
-      //       },
-      //     };
+        // Kiểm tra các pattern
+        return keepPatterns.some((pattern) => layerId.includes(pattern));
+      };
 
-      //     // Ưu tiên dùng overview_polyline nếu hợp lệ
-      //     if (route && route.overview_polyline && route.overview_polyline.points) {
-      //       try {
-      //         const decoded = polyline.toGeoJSON(route.overview_polyline.points);
-      //         if (decoded.coordinates && decoded.coordinates.length > 1) {
-      //           geojson.geometry.coordinates = decoded.coordinates;
-      //         }
-      //       } catch (e) {
-      //         console.warn("Lỗi decode polyline, dùng fallback", e);
-      //       }
-      //     }
-
-      //     // Fallback: nếu polyline lỗi hoặc quá ngắn → tự tạo đường thẳng từ start → end
-      //     if (geojson.geometry.coordinates.length < 2) {
-      //       console.warn("Dùng fallback LineString trực tiếp");
-      //       const start = route.legs[0].start_location;
-      //       const end = route.legs[0].end_location;
-      //       geojson.geometry.coordinates = [
-      //         [start.lng, start.lat],
-      //         [end.lng, end.lat],
-      //       ];
-      //     }
-
-      //     // Xóa source/layer cũ nếu đã tồn tại
-      //     if (map.getSource("route")) {
-      //       map.removeLayer("route");
-      //       map.removeSource("route");
-      //     }
-
-      //     // Thêm source
-      //     map.addSource("route", {
-      //       type: "geojson",
-      //       data: geojson,
-      //     });
-
-      //     // Thêm layer tuyến đường
-      //     map.addLayer(
-      //       {
-      //         id: "route",
-      //         type: "line",
-      //         source: "route",
-      //         layout: {
-      //           "line-join": "round",
-      //           "line-cap": "round",
-      //         },
-      //         paint: {
-      //           "line-color": "blue",
-      //           "line-width": 5,
-      //           "line-opacity": 0.9,
-      //         },
-      //       },
-      //       firstSymbolId
-      //     ); // vẽ dưới chữ
-
-      //     // Thêm marker điểm đầu và điểm cuối (tùy chọn)
-      //     new goongjs.Marker({ color: "#4CAF50" })
-      //       .setLngLat([route.legs[0].start_location.lng, route.legs[0].start_location.lat])
-      //       .addTo(map);
-
-      //     new goongjs.Marker({ color: "#f44336" })
-      //       .setLngLat([route.legs[0].end_location.lng, route.legs[0].end_location.lat])
-      //       .addTo(map);
-
-      //     // Fit bản đồ vừa với tuyến đường
-      //     const bounds = new goongjs.LngLatBounds();
-      //     geojson.geometry.coordinates.forEach((coord) => bounds.extend(coord));
-      //     map.fitBounds(bounds, { padding: 100, duration: 1500 });
-      //   })
-      //   .catch((err) => {
-      //     console.error("Lỗi gọi Directions API:", err);
-      //     alert("Không thể lấy tuyến đường. Kiểm tra API key và mạng!");
-      //   });
-
-      // // Direction Matrix
-      // goongClient.directions
-      //   .getDirectionMatrix({
-      //     origins: points.map((p) => p.coords.join(",")),
-      //     destinations: points.map((p) => p.coords.join(",")),
-      //     vehicle: "car",
-      //   })
-      //   .send()
-      //   .then((response) => {
-      //     console.log("🚀 ~ response:", response);
-      //   })
-      //   .catch((err) => {
-      //     console.error("Lỗi gọi Direction Matrix API:", err);
-      //     alert("Không thể lấy ma trận tuyến đường. Kiểm tra API key và mạng!");
-      //   });
-
-      // TẮT POI + NHÃN KHÔNG CẦN
+      // Duyệt qua tất cả layers và ẩn các symbol layer không cần thiết
       map.getStyle().layers.forEach((layer) => {
-        const id = layer.id;
-        // console.log("🚀 ~ id:", id);
-        const type = layer.type;
-        //   console.log("🚀 ~ type:", type);
-        if (
-          layer.type === "symbol" &&
-          !id.startsWith("salesman") &&
-          !id.startsWith("cluster") &&
-          !id.includes("poi-airport") && // Sân bay
-          !id.includes("water") &&
-          !id.includes("highway-shield-1") && // Quốc Lộ
-          !id.includes("highway-shield-2") && // Tỉnh Lộ
-          !id.includes("highway-name-major") && // Tên đường chính
-          !id.includes("highway-name-medium") && // Tên đường chính
-          !id.includes("road-oneway-spaced-large") &&
-          !id.includes("road-major") &&
-          !id.includes("lake-name_priority_2") &&
-          !id.includes("place-city-capital-vietnam") &&
-          !id.includes("place-city-capital") && // Thủ đô HN
-          !id.includes("place-city1") && // TP trực thuộc TW
-          !id.includes("place-city2") && // Tỉnh
-          !id.includes("place-village") &&
-          !id.includes("lake-name_priority_2") &&
-          !id.includes("ocean") && // Biển đông
-          !id.includes("place-island") && // Đảo nhỏ
-          !id.includes("place-archipelago") // Quần đảo hoàng sa/ Trường Sa
-        ) {
-          map.setLayoutProperty(id, "visibility", "none");
+        // Chỉ xử lý symbol layers (POI và labels)
+        if (layer.type === "symbol") {
+          const layerId = layer.id;
+
+          // Nếu layer không nằm trong danh sách giữ lại thì ẩn đi
+          if (!shouldKeepLayer(layerId)) {
+            try {
+              map.setLayoutProperty(layerId, "visibility", "none");
+            } catch (error) {
+              // Một số layer có thể không tồn tại hoặc đã bị xóa
+              console.warn(`Không thể ẩn layer: ${layerId}`, error);
+            }
+          }
         }
       });
 
       // === 1. NÚT ZOOM + / − ===
       map.addControl(
-        new window.goongjs.NavigationControl({
+        new goongjs.NavigationControl({
           showCompass: false,
           showZoom: true,
           visualizePitch: false,
@@ -521,7 +379,7 @@ export default function Map() {
 
       // === 2. NÚT LA BÀN (Compass) ===
       map.addControl(
-        new window.goongjs.NavigationControl({
+        new goongjs.NavigationControl({
           showZoom: false,
           showCompass: true,
           visualizePitch: false,
@@ -531,7 +389,7 @@ export default function Map() {
 
       // === 3. NÚT ĐỊNH VỊ HIỆN TẠI ===
       map.addControl(
-        new window.goongjs.GeolocateControl({
+        new goongjs.GeolocateControl({
           positionOptions: { enableHighAccuracy: true },
           trackUserLocation: true,
           showAccuracyCircle: true,
@@ -539,6 +397,9 @@ export default function Map() {
         }),
         "top-right"
       );
+
+      // === 4. NÚT FULLSCREEN ===
+      map.addControl(new goongjs.FullscreenControl());
 
       // Setup event handlers cho click và hover
       // Click vào nhân viên → hiện popup (sẽ được thêm sau khi có layers)
@@ -582,21 +443,29 @@ export default function Map() {
 
     return () => {
       map.remove();
+      setIsMapLoaded(false);
     };
   }, []); // CHỈ chạy 1 lần khi mount
 
-  // ========== CẬP NHẬT DỮ LIỆU KHI saleMan THAY ĐỔI ==========
+  // === VẼ: KHI CÓ DATA VÀ MAP ĐÃ LOAD ===
   useEffect(() => {
-    if (!mapRef.current || !mapRef.current.loaded()) return;
+    if (!mapRef.current || !isMapLoaded) return;
     if (saleMan.length === 0) return;
 
+    // Gọi hàm vẽ data
     updateSalesmenData(mapRef.current, saleMan);
     flyToSalesman(mapRef.current, saleMan);
-  }, [saleMan, updateSalesmenData, flyToSalesman]);
+  }, [saleMan, isMapLoaded, updateSalesmenData, flyToSalesman]);
 
   return (
-    <>
-      <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} />
-    </>
+    <div
+      ref={mapContainerRef}
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100vw",
+        height: "100vh",
+      }}
+    />
   );
 }
