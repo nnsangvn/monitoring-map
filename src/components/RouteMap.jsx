@@ -4,13 +4,11 @@ import "../App.css";
 import "../index.css";
 import { getPointOfSale, getSalemanTracking } from "../service/api";
 import { APP_COLORS } from "../constants/colors";
+import { POS_ICON_SVG } from "../constants/icon";
+import { createSVGMarker } from "../utils/marker";
 
 const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY;
 const GOONG_MAPTILES_KEY = import.meta.env.VITE_GOONG_MAPTILES_KEY;
-
-// SVG icon cho user (giữ nguyên từ Map.jsx)
-const POS_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="12" cy="14" r="16" fill="white"/>
-	<path fill="currentColor" d="M19.148 2.971A2.01 2.01 0 0 0 17.434 2H6.566c-.698 0-1.355.372-1.714.971L2.143 7.485A1 1 0 0 0 2 8a3.97 3.97 0 0 0 1 2.618V19c0 1.103.897 2 2 2h14c1.103 0 2-.897 2-2v-8.382A3.97 3.97 0 0 0 22 8a1 1 0 0 0-.143-.515zm.836 5.28A2 2 0 0 1 18 10c-1.103 0-2-.897-2-2c0-.068-.025-.128-.039-.192l.02-.004L15.22 4h2.214zM10.819 4h2.361l.813 4.065C13.958 9.137 13.08 10 12 10s-1.958-.863-1.993-1.935zM6.566 4H8.78l-.76 3.804l.02.004C8.025 7.872 8 7.932 8 8c0 1.103-.897 2-2 2a2 2 0 0 1-1.984-1.749zM10 19v-3h4v3zm6 0v-3c0-1.103-.897-2-2-2h-4c-1.103 0-2 .897-2 2v3H5v-7.142c.321.083.652.142 1 .142a4 4 0 0 0 3-1.357c.733.832 1.807 1.357 3 1.357s2.267-.525 3-1.357A4 4 0 0 0 18 12c.348 0 .679-.059 1-.142V19z" stroke-width="1" stroke="currentColor"/>`;
 
 export default function RouteMap() {
   const mapContainer = useRef(null);
@@ -86,17 +84,6 @@ export default function RouteMap() {
       .setHTML(html)
       .addTo(map);
   }, []);
-
-  // ========== CREATE SVG MARKER ==========
-  const createSVGMarker = (color, iconSvg) => {
-    const coloredIcon = iconSvg.replace(/currentColor/g, color);
-    return `<svg width="32" height="48" viewBox="0 0 48 64" xmlns="http://www.w3.org/2000/svg">
-      <path d="M24 0C10.745 0 0 10.745 0 24c0 18.273 24 40 24 40s24-21.727 24-40C48 10.745 37.255 0 24 0z" fill="${color}" stroke="${color}"/>
-      <g transform="translate(12, 9) scale(1)">
-        ${coloredIcon.replace(/<svg[^>]*>|<\/svg>/g, "")}
-      </g>
-    </svg>`;
-  };
 
   // ========== HÀM CẬP NHẬT DỮ LIỆU ĐIỂM BÁN ==========
   const updatePointOfSaleData = useCallback((map, points) => {

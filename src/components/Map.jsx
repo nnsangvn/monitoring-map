@@ -4,11 +4,11 @@ import "../App.css";
 import "../index.css";
 import { direction, fetchSaleMan } from "../service/api.ts";
 import { APP_COLORS } from "../constants/colors.js";
+import { USER_ICON_SVG } from "../constants/icon.js";
+import { createSVGMarker } from "../utils/marker.js";
 
 const GOONG_MAPTILES_KEY = import.meta.env.VITE_GOONG_MAPTILES_KEY;
 const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY;
-// SVG icon cho user
-const USER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="12" cy="14" r="16" fill="white"/><g fill="none" stroke="currentColor" stroke-width="1.5"><circle fill="none" cx="12" cy="6" r="4"/><path d="M20 17.5c0 2.485 0 4.5-8 4.5s-8-2.015-8-4.5S7.582 13 12 13s8 2.015 8 4.5Z"/></g></svg>`;
 
 export default function Map() {
   const mapContainer = useRef(null);
@@ -116,17 +116,6 @@ export default function Map() {
     },
     [showSalesmanPopup]
   );
-
-  // ========== CREATE SVG MARKER ==========
-  const createSVGMarker = (color, iconSvg) => {
-    const coloredIcon = iconSvg.replace(/currentColor/g, color);
-    return `<svg width="32" height="48" viewBox="0 0 48 64" xmlns="http://www.w3.org/2000/svg">
-      <path d="M24 0C10.745 0 0 10.745 0 24c0 18.273 24 40 24 40s24-21.727 24-40C48 10.745 37.255 0 24 0z" fill="${color}"/>
-      <g transform="translate(12, 9) scale(1)">
-        ${coloredIcon.replace(/<svg[^>]*>|<\/svg>/g, "")}
-      </g>
-    </svg>`;
-  };
 
   // ========== CREATE PULSING DOT ==========
   const createPulsingDot = (color = "rgba(0, 181, 255, 1)") => {
