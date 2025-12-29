@@ -18,7 +18,8 @@ export default function RouteMap() {
   const mapRef = useRef(null);
   const routeAnimationTimerRef = useRef(null); // Thêm ref để lưu timer
   const routeAnimationStateRef = useRef({ currentIndex: 1, fullCoordinates: [], isPaused: false }); // Lưu trạng thái animation
-  const [shouldDrawRoute, setShouldDrawRoute] = useState(false); // mặc định là false → không vẽ
+  const [shouldDrawRoute, setShouldDrawRoute] = useState(false); // mặc định là false → không vẽ animation
+  const [showStaticRoute, setShowStaticRoute] = useState(false); // Bật/tắt hiển thị lộ trình tĩnh
   const [isPaused, setIsPaused] = useState(false); // Trạng thái tạm dừng
   const [isAnimating, setIsAnimating] = useState(false); // Trạng thái đang animation
   const [selectedDate, setSelectedDate] = useState(null); // Ngày được chọn từ DatePicker
@@ -109,8 +110,8 @@ export default function RouteMap() {
     };
 
     // console.log("🚀 ~ Route Data (coordinates format):", routeData);
-    console.log("🚀 ~ Coordinates array:", filteredCoordinates);
-    console.log(`🚀 ~ Đã lọc từ ${coordinates.length} xuống ${filteredCoordinates.length} điểm`);
+    // console.log("🚀 ~ Coordinates array:", filteredCoordinates);
+    // console.log(`🚀 ~ Đã lọc từ ${coordinates.length} xuống ${filteredCoordinates.length} điểm`);
 
     setRouteCoordinates(filteredCoordinates);
   }, [salemanTracking, filterNearbyPoints]);
@@ -348,6 +349,129 @@ export default function RouteMap() {
     loadImageFromSVG(pos_yellow, "icon-pos-yellow", onAllLoaded);
     loadImageFromSVG(pos_red, "icon-pos-red", onAllLoaded);
     loadImageFromSVG(pos_gray, "icon-pos-gray", onAllLoaded);
+  }, []);
+
+  // ========== HÀM VẼ ROUTE TĨNH (KHÔNG ANIMATION) ==========
+  const drawRouteStatic = useCallback((map, coordinates) => {
+    // console.log("🎨 [drawRouteStatic] Hàm được gọi với", coordinates?.length || 0, "điểm");
+    if (!coordinates || coordinates.length === 0) {
+      // console.log("⚠️ [drawRouteStatic] Coordinates rỗng, không vẽ");
+      return;
+    }
+
+    // Clear timer cũ nếu có
+    if (routeAnimationTimerRef.current) {
+      clearInterval(routeAnimationTimerRef.current);
+      routeAnimationTimerRef.current = null;
+    }
+
+    // Xóa source và layer cũ của route tĩnh nếu có
+    if (map.getSource("route-static")) {
+      if (map.getLayer("route-static-line")) map.removeLayer("route-static-line");
+      map.removeSource("route-static");
+    }
+
+    // Xóa source route-static-start-point nếu tồn tại
+    if (map.getSource("route-static-start-point")) {
+      if (map.getLayer("route-static-start-point")) map.removeLayer("route-static-start-point");
+      map.removeSource("route-static-start-point");
+    }
+
+    // Tạo data với TOÀN BỘ coordinates cho route tĩnh
+    const routeData = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: coordinates, // Vẽ toàn bộ route một lần
+          },
+          properties: {},
+        },
+      ],
+    };
+
+    // Thêm source cho route tĩnh với toàn bộ coordinates
+    map.addSource("route-static", {
+      type: "geojson",
+      data: routeData,
+    });
+
+    // Thêm layer để vẽ đường đi (tĩnh)
+    if (!map.getLayer("route-static-line")) {
+      map.addLayer({
+        id: "route-static-line",
+        type: "line",
+        source: "route-static",
+        layout: {
+          "line-join": "round",
+          "line-cap": "round",
+        },
+        paint: {
+          "line-color": "green", // màu của line
+          "line-opacity": 0.75,
+          "line-width": 5,
+        },
+      });
+    }
+
+    // Thêm điểm bắt đầu (start marker) cho route tĩnh
+    if (coordinates.length > 0) {
+      const startPointGeoJSON = {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: coordinates[0],
+            },
+            properties: {
+              type: "start",
+            },
+          },
+        ],
+      };
+
+      map.addSource("route-static-start-point", {
+        type: "geojson",
+        data: startPointGeoJSON,
+      });
+
+      // Thêm layer cho điểm bắt đầu (tĩnh)
+      if (!map.getLayer("route-static-start-point")) {
+        map.addLayer({
+          id: "route-static-start-point",
+          type: "circle",
+          source: "route-static-start-point",
+          paint: {
+            "circle-radius": 8,
+            "circle-color": "#00ff00",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+          },
+        });
+      }
+    }
+
+    // Fit bounds để hiển thị toàn bộ route
+    if (coordinates.length > 0) {
+      const bounds = coordinates.reduce((bounds, coord) => {
+        return bounds.extend(coord);
+      }, new window.goongjs.LngLatBounds(coordinates[0], coordinates[0]));
+
+      map.fitBounds(bounds, {
+        padding: { top: 50, bottom: 50, left: 50, right: 50 },
+        duration: 2000,
+      });
+    }
+
+    // Set state
+    setIsAnimating(false);
+    setIsPaused(false);
+
+    // console.log("✅ [drawRouteStatic] Đã vẽ xong route tĩnh với", coordinates.length, "điểm");
   }, []);
 
   // ========== HÀM BẮT ĐẦU ANIMATION ROUTE ==========
@@ -769,6 +893,31 @@ export default function RouteMap() {
     routeAnimationStateRef.current = { currentIndex: 1, fullCoordinates: [], isPaused: false };
   }, []);
 
+  // ========== VẼ ROUTE TĨNH KHI CÓ DỮ LIỆU ROUTE & MAP ĐÃ LOAD ==========
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.loaded()) return;
+
+    // Nếu tắt showStaticRoute thì xóa layer/static source nếu có
+    if (!showStaticRoute) {
+      if (map.getSource("route-static")) {
+        if (map.getLayer("route-static-line")) map.removeLayer("route-static-line");
+        map.removeSource("route-static");
+      }
+      if (map.getSource("route-static-start-point")) {
+        if (map.getLayer("route-static-start-point")) map.removeLayer("route-static-start-point");
+        map.removeSource("route-static-start-point");
+      }
+      return;
+    }
+
+    // Bật showStaticRoute: chỉ vẽ khi có dữ liệu
+    if (routeCoordinates.length === 0) return;
+
+    // console.log("✅ [drawRouteStatic] Bắt đầu vẽ route tĩnh với", routeCoordinates.length, "điểm");
+    drawRouteStatic(map, routeCoordinates);
+  }, [routeCoordinates, showStaticRoute, drawRouteStatic]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.loaded()) return;
@@ -813,11 +962,37 @@ export default function RouteMap() {
             top: "90px", // thấp hơn DatePicker + Alert
             left: "20px",
             zIndex: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
           }}
         >
+          {/* Nút bật/tắt lộ trình tĩnh - độc lập với animation */}
+          {routeCoordinates.length > 0 && (
+            <button
+              onClick={() => setShowStaticRoute((prev) => !prev)}
+              style={{
+                padding: "8px 18px",
+                background: showStaticRoute ? "#16a085" : "#7f8c8d",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "14px",
+                fontWeight: "bold",
+                boxShadow: "0 3px 8px rgba(0,0,0,0.2)",
+                cursor: "pointer",
+              }}
+            >
+              {showStaticRoute ? "Tắt lộ trình tĩnh" : "Bật lộ trình tĩnh"}
+            </button>
+          )}
+
           {routeCoordinates.length > 0 ? (
             <button
-              onClick={() => setShouldDrawRoute(true)}
+              onClick={() => {
+                // Bật flag để useEffect phía dưới chạy updateRouteData → vẽ animation
+                setShouldDrawRoute(true);
+              }}
               style={{
                 padding: "12px 24px",
                 background: "#3887be",
