@@ -7,7 +7,7 @@ export const useSalemanRouteTracking = (salemanCode, from, to) => {
   useEffect(() => {
     const loadSalemanTracking = async () => {
       try {
-        const res = await getSalemanTracking(salemanCode, from || "01-12-2025", to || "31-12-2025");
+        const res = await getSalemanTracking(salemanCode, from, to);
         if (res.data.data) {
           setSalemanTracking(res.data.data);
         }
