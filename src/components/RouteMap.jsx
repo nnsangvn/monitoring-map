@@ -8,7 +8,7 @@ import { createSVGMarker } from "../utils/marker";
 import accessToken from "./access_token.jsx";
 import { usePointofSale } from "../hooks/usePointofSale.js";
 import { useSalemanRouteTracking } from "../hooks/useSalemanRouteTracking.js";
-import { DatePicker, Alert } from "antd";
+import { DatePicker, Alert, Button } from "antd";
 import dayjs from "dayjs";
 
 goongjs.accessToken = accessToken;
@@ -410,7 +410,7 @@ export default function RouteMap() {
         },
         paint: {
           "line-color": "green", // màu của line
-          "line-opacity": 0.75,
+          "line-opacity": 0.6,
           "line-width": 5,
         },
       });
@@ -588,8 +588,8 @@ export default function RouteMap() {
           },
           paint: {
             "line-color": "#3887be",
-            "line-opacity": 0.75,
-            "line-width": 5,
+            "line-opacity": 1,
+            "line-width": 6,
           },
         });
       }
@@ -911,8 +911,18 @@ export default function RouteMap() {
       return;
     }
 
-    // Bật showStaticRoute: chỉ vẽ khi có dữ liệu
-    if (routeCoordinates.length === 0) return;
+    // Bật showStaticRoute: nếu không còn dữ liệu route thì xoá route tĩnh cũ
+    if (routeCoordinates.length === 0) {
+      if (map.getSource("route-static")) {
+        if (map.getLayer("route-static-line")) map.removeLayer("route-static-line");
+        map.removeSource("route-static");
+      }
+      if (map.getSource("route-static-start-point")) {
+        if (map.getLayer("route-static-start-point")) map.removeLayer("route-static-start-point");
+        map.removeSource("route-static-start-point");
+      }
+      return;
+    }
 
     // console.log("✅ [drawRouteStatic] Bắt đầu vẽ route tĩnh với", routeCoordinates.length, "điểm");
     drawRouteStatic(map, routeCoordinates);
@@ -969,44 +979,40 @@ export default function RouteMap() {
         >
           {/* Nút bật/tắt lộ trình tĩnh - độc lập với animation */}
           {routeCoordinates.length > 0 && (
-            <button
+            <Button
+              danger={showStaticRoute}
+              type="primary"
               onClick={() => setShowStaticRoute((prev) => !prev)}
               style={{
-                padding: "8px 18px",
-                background: showStaticRoute ? "#16a085" : "#7f8c8d",
-                color: "white",
-                border: "none",
+                height: 40,
+                padding: "0 18px",
                 borderRadius: "8px",
                 fontSize: "14px",
                 fontWeight: "bold",
-                boxShadow: "0 3px 8px rgba(0,0,0,0.2)",
-                cursor: "pointer",
+                // backgroundColor: showStaticRoute ? "red" : "blue",
               }}
             >
               {showStaticRoute ? "Tắt lộ trình tĩnh" : "Bật lộ trình tĩnh"}
-            </button>
+            </Button>
           )}
 
           {routeCoordinates.length > 0 ? (
-            <button
+            <Button
+              type="primary"
               onClick={() => {
                 // Bật flag để useEffect phía dưới chạy updateRouteData → vẽ animation
                 setShouldDrawRoute(true);
               }}
               style={{
-                padding: "12px 24px",
-                background: "#3887be",
-                color: "white",
-                border: "none",
+                height: 40,
+                padding: "0 24px",
                 borderRadius: "8px",
                 fontSize: "16px",
                 fontWeight: "bold",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                cursor: "pointer",
               }}
             >
               Xem lộ trình
-            </button>
+            </Button>
           ) : (
             selectedDate &&
             (salemanTracking?.length === 0 || routeCoordinates.length === 0) && (
@@ -1039,65 +1045,57 @@ export default function RouteMap() {
         >
           {/* Hiển thị nút Tạm dừng khi đang animation và chưa pause */}
           {isAnimating && !isPaused && (
-            <button
+            <Button
+              type="default"
               onClick={handlePause}
               style={{
-                padding: "10px 20px",
-                background: "#f39c12",
-                color: "white",
-                border: "none",
+                height: 40,
+                padding: "0 20px",
                 borderRadius: "6px",
                 fontSize: "14px",
                 fontWeight: "bold",
-                cursor: "pointer",
-                transition: "background 0.2s",
+                backgroundColor: "#f39c12",
+                color: "white",
+                border: "none",
               }}
-              onMouseEnter={(e) => (e.target.style.background = "#e67e22")}
-              onMouseLeave={(e) => (e.target.style.background = "#f39c12")}
             >
               Tạm dừng
-            </button>
+            </Button>
           )}
           {/* Hiển thị nút Tiếp tục khi đang pause */}
           {isPaused && (
-            <button
+            <Button
+              type="default"
               onClick={handleResume}
               style={{
-                padding: "10px 20px",
-                background: "#27ae60",
-                color: "white",
-                border: "none",
+                height: 40,
+                padding: "0 20px",
                 borderRadius: "6px",
                 fontSize: "14px",
                 fontWeight: "bold",
-                cursor: "pointer",
-                transition: "background 0.2s",
+                backgroundColor: "#27ae60",
+                color: "white",
+                border: "none",
               }}
-              onMouseEnter={(e) => (e.target.style.background = "#229954")}
-              onMouseLeave={(e) => (e.target.style.background = "#27ae60")}
             >
               Tiếp tục
-            </button>
+            </Button>
           )}
           {/* Luôn hiển thị nút Dừng luôn */}
-          <button
+          <Button
+            danger
+            type="primary"
             onClick={handleStop}
             style={{
-              padding: "10px 20px",
-              background: "#e74c3c",
-              color: "white",
-              border: "none",
+              height: 40,
+              padding: "0 20px",
               borderRadius: "6px",
               fontSize: "14px",
               fontWeight: "bold",
-              cursor: "pointer",
-              transition: "background 0.2s",
             }}
-            onMouseEnter={(e) => (e.target.style.background = "#c0392b")}
-            onMouseLeave={(e) => (e.target.style.background = "#e74c3c")}
           >
             Dừng
-          </button>
+          </Button>
         </div>
       )}
 
