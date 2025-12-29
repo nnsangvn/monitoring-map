@@ -30,6 +30,54 @@ export default function RouteMap() {
 
   const [routeCoordinates, setRouteCoordinates] = useState([]);
 
+  // ========== HÀM TÍNH KHOẢNG CÁCH GIỮA 2 ĐIỂM ==========
+  // Hàm tính khoảng cách giữa 2 điểm [lng, lat] (đơn vị: mét)
+  // Dùng công thức Haversine đơn giản
+  const getDistanceMeters = useCallback((coord1, coord2) => {
+    const [lon1, lat1] = coord1;
+    const [lon2, lat2] = coord2;
+
+    const R = 6371000; // Bán kính Trái Đất (mét)
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // khoảng cách (mét)
+  }, []);
+
+  // ========== HÀM LỌC CÁC ĐIỂM GẦN NHAU ==========
+  // Ngưỡng khoảng cách tối thiểu (đơn vị: mét)
+  const MIN_DISTANCE = 12; // Bỏ qua nếu gần hơn MIN_DISTANCE mét
+
+  const filterNearbyPoints = useCallback(
+    (coordinates) => {
+      if (!coordinates || coordinates.length === 0) return [];
+
+      // Luôn giữ điểm đầu tiên
+      const filtered = [coordinates[0]];
+
+      for (let i = 1; i < coordinates.length; i++) {
+        const lastPoint = filtered[filtered.length - 1];
+        const currentPoint = coordinates[i];
+
+        // Chỉ thêm điểm nếu khoảng cách với điểm cuối cùng >= MIN_DISTANCE
+        if (getDistanceMeters(lastPoint, currentPoint) >= MIN_DISTANCE) {
+          filtered.push(currentPoint);
+        }
+      }
+
+      return filtered;
+    },
+    [getDistanceMeters]
+  );
+
   useEffect(() => {
     if (salemanTracking?.length === 0) {
       setRouteCoordinates([]);
@@ -44,16 +92,20 @@ export default function RouteMap() {
         parseFloat(track.lat), // Latitude sau
       ]);
 
+    // Lọc các điểm gần nhau
+    const filteredCoordinates = filterNearbyPoints(coordinates);
+
     // Format như trong ví dụ GeoJSON
     const routeData = {
-      coordinates: coordinates,
+      coordinates: filteredCoordinates,
     };
 
     // console.log("🚀 ~ Route Data (coordinates format):", routeData);
-    // console.log("🚀 ~ Coordinates array:", coordinates);
+    console.log("🚀 ~ Coordinates array:", filteredCoordinates);
+    console.log(`🚀 ~ Đã lọc từ ${coordinates.length} xuống ${filteredCoordinates.length} điểm`);
 
-    setRouteCoordinates(coordinates);
-  }, [salemanTracking]);
+    setRouteCoordinates(filteredCoordinates);
+  }, [salemanTracking, filterNearbyPoints]);
 
   // POPUP POS
   const showPointOfSalePopup = useCallback((map, pointOfSale, coords) => {
@@ -343,7 +395,7 @@ export default function RouteMap() {
           });
         }
       }
-    }, 200); // Interval 200ms
+    }, 300); // Interval 200ms - Tốc độ vẽ
   }, []);
 
   // ========== HÀM VẼ ROUTE TỪ SALEMAN TRACKING ==========
