@@ -209,9 +209,10 @@ export default function RouteMap() {
             source: "saleman-marker",
             layout: {
               "icon-image": "icon-saleman-current",
-              "icon-size": 1.0,
+              "icon-size": ["step", ["zoom"], 0.8, 16, 1.0],
               "icon-allow-overlap": true,
               "icon-anchor": "bottom",
+              "icon-rotate": ["step", ["zoom"], -45, 16, 0], // Xoay -45 độ khi zoom ra (< 12), không xoay khi zoom vào (>= 12)
             },
           });
 
@@ -337,9 +338,10 @@ export default function RouteMap() {
             "icon-pos-red",
             "icon-pos-gray",
           ],
-          "icon-size": 0.8,
+          "icon-size": ["step", ["zoom"], 0.8, 16, 1.0],
           "icon-allow-overlap": true,
           "icon-anchor": "bottom",
+          "icon-rotate": ["step", ["zoom"], 45, 16, 0], // Xoay -45 độ khi zoom ra (< 12), không xoay khi zoom vào (>= 12)
         },
       });
     };
