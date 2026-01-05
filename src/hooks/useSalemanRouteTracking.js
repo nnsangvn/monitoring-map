@@ -8,7 +8,7 @@ export const useSalemanRouteTracking = (salemanCode, from, to) => {
     const loadSalemanTracking = async () => {
       try {
         const res = await getSalemanTracking(salemanCode, from, to);
-        if (res.data.data) {
+        if (res?.data?.data) {
           setSalemanTracking(res.data.data);
         }
       } catch (error) {

@@ -8,8 +8,7 @@ import { createSVGMarker } from "../utils/marker";
 import accessToken from "./access_token.jsx";
 import { usePointofSale } from "../hooks/usePointofSale.js";
 import { useSalemanRouteTracking } from "../hooks/useSalemanRouteTracking.js";
-import { DatePicker, Alert, Button } from "antd";
-import dayjs from "dayjs";
+import { Alert, Button } from "antd";
 
 goongjs.accessToken = accessToken;
 
@@ -22,20 +21,14 @@ export default function RouteMap() {
   const [showStaticRoute, setShowStaticRoute] = useState(false); // Bật/tắt hiển thị lộ trình tĩnh
   const [isPaused, setIsPaused] = useState(false); // Trạng thái tạm dừng
   const [isAnimating, setIsAnimating] = useState(false); // Trạng thái đang animation
-  const [selectedDate, setSelectedDate] = useState(null); // Ngày được chọn từ DatePicker
   const params = new URLSearchParams(window.location.search);
   const salemanCode = params.get("saleman_code");
   const from = params.get("from");
   const to = params.get("to");
 
-  // Format ngày thành dd/mm/yyyy để truyền vào API
-  const formattedDate = selectedDate
-    ? dayjs(selectedDate).format("DD-MM-YYYY")
-    : dayjs().format("DD-MM-YYYY");
-
   // Sử dụng hooks để fetch data
   const pointOfSale = usePointofSale(salemanCode, from, to);
-  const salemanTracking = useSalemanRouteTracking(salemanCode, formattedDate, formattedDate);
+  const salemanTracking = useSalemanRouteTracking(salemanCode, from, to);
 
   const [routeCoordinates, setRouteCoordinates] = useState([]);
 
@@ -941,37 +934,12 @@ export default function RouteMap() {
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100vh" }}>
-      {/* DatePicker để chọn ngày xem lộ trình */}
-      <div
-        style={{
-          position: "absolute",
-          top: "20px",
-          left: "20px",
-          zIndex: 10,
-          background: "white",
-          padding: "12px",
-          borderRadius: "8px",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px",
-        }}
-      >
-        <DatePicker
-          placeholder="Chọn ngày"
-          format="DD-MM-YYYY"
-          onChange={(date) => setSelectedDate(date)}
-          style={{ width: "120px" }}
-          allowClear
-        />
-      </div>
-
       {/* Nút bấm nổi trên bản đồ / hoặc thông báo lỗi nếu không có lộ trình */}
       {!shouldDrawRoute && (
         <div
           style={{
             position: "absolute",
-            top: "90px", // thấp hơn DatePicker + Alert
+            top: "20px", // thấp hơn DatePicker + Alert
             left: "20px",
             zIndex: 10,
             display: "flex",
@@ -998,7 +966,7 @@ export default function RouteMap() {
             </Button>
           )}
 
-          {routeCoordinates.length > 0 ? (
+          {routeCoordinates.length > 0 && from == to ? (
             <Button
               type="primary"
               onClick={() => {
@@ -1016,10 +984,11 @@ export default function RouteMap() {
               Xem lộ trình
             </Button>
           ) : (
-            selectedDate &&
+            from &&
+            to &&
             (salemanTracking?.length === 0 || routeCoordinates.length === 0) && (
               <Alert
-                title={`Không có lộ trình cho ngày ${dayjs(selectedDate).format("DD-MM-YYYY")}`}
+                title={`Không có lộ trình cho ngày ${from} - ${to}`}
                 type="warning"
                 showIcon
                 style={{ fontSize: "14px", padding: "8px 12px", background: "white" }}
