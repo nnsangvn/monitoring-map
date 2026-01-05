@@ -21,10 +21,72 @@ export default function RouteMap() {
   const [showStaticRoute, setShowStaticRoute] = useState(false); // Bật/tắt hiển thị lộ trình tĩnh
   const [isPaused, setIsPaused] = useState(false); // Trạng thái tạm dừng
   const [isAnimating, setIsAnimating] = useState(false); // Trạng thái đang animation
-  const params = new URLSearchParams(window.location.search);
-  const salemanCode = params.get("saleman_code");
-  const from = params.get("from");
-  const to = params.get("to");
+
+  // Lưu query params vào state khi mount lần đầu
+  const [queryParams, setQueryParams] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      salemanCode: params.get("saleman_code"),
+      from: params.get("from"),
+      to: params.get("to"),
+    };
+  });
+
+  // // Cập nhật query params khi URL thay đổi
+  useEffect(() => {
+    const updateQueryParams = () => {
+      const params = new URLSearchParams(window.location.search);
+      const newParams = {
+        salemanCode: params.get("saleman_code"),
+        from: params.get("from"),
+        to: params.get("to"),
+      };
+
+      setQueryParams((prev) => {
+        if (!prev.from || !prev.to || !prev.salemanCode) {
+          return newParams;
+        }
+        if (
+          prev.salemanCode !== newParams.salemanCode ||
+          prev.from !== newParams.from ||
+          prev.to !== newParams.to
+        ) {
+          return newParams;
+        }
+        return prev;
+      });
+    };
+
+    // Đọc ngay lần đầu
+    updateQueryParams();
+
+    // Lưu URL hiện tại để so sánh
+    let lastUrl = window.location.href;
+
+    // Kiểm tra URL mỗi 500ms
+    const checkUrlInterval = setInterval(() => {
+      const currentUrl = window.location.href;
+      if (currentUrl !== lastUrl) {
+        lastUrl = currentUrl;
+        updateQueryParams();
+      }
+    }, 500);
+
+    // Lắng nghe popstate
+    const handlePopState = () => {
+      lastUrl = window.location.href;
+      updateQueryParams();
+    };
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      clearInterval(checkUrlInterval);
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
+  // Sử dụng queryParams từ state
+  const { salemanCode, from, to } = queryParams;
 
   // Sử dụng hooks để fetch data
   const pointOfSale = usePointofSale(salemanCode, from, to);

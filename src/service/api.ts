@@ -16,7 +16,7 @@ const getPointOfSale = (salemanCode: string, from?: string, to?: string) => {
   return axiosClient.get(URL);
 };
 
-const getSalemanTracking = (salemanCode: string, from?: string, to?: string) => {
+const getSalemanTracking = (salemanCode: string, from: string, to: string) => {
   const URL = `https://api-smac.newweb.vn/v0/client/saleman-route-tracking?saleman_code=${salemanCode}&from=${from}&to=${to}`;
   return axiosClient.get(URL);
 };

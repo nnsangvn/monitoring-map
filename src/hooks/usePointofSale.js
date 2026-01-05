@@ -7,7 +7,7 @@ export const usePointofSale = (salemanCode, from, to) => {
   useEffect(() => {
     const loadPointOfSale = async () => {
       try {
-        const res = await getPointOfSale(salemanCode, from || "01-12-2025", to || "31-12-2025");
+        const res = await getPointOfSale(salemanCode, from, to);
         if (res.data.data) {
           setPointOfSale(res.data.data);
         }
