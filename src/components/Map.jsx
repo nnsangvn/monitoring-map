@@ -57,7 +57,10 @@ export default function Map() {
       }
 
       if (!salesman.lat || !salesman.long) {
-        alert(`Nhân viên ${salesman.name} không có tọa độ`);
+        // Chỉ hiển thị alert cho SALEMAN (sales_position = '1')
+        if (salesman.sales_position === "1") {
+          alert(`Sale ${salesman.name} không có tọa độ`);
+        }
         return;
       }
 
