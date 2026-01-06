@@ -9,6 +9,7 @@ import accessToken from "./access_token.jsx";
 import { usePointofSale } from "../hooks/usePointofSale.js";
 import { useSalemanRouteTracking } from "../hooks/useSalemanRouteTracking.js";
 import { Alert, Button } from "antd";
+import MapLegend from "./MapLegend.jsx";
 
 goongjs.accessToken = accessToken;
 
