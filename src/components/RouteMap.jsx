@@ -1363,9 +1363,6 @@ export default function RouteMap() {
         </div>
       )}
 
-      {/* Map Legend - Chú thích */}
-      <MapLegend />
-
       <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} />
     </div>
   );
