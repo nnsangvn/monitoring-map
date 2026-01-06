@@ -16,7 +16,13 @@ export default function RouteMap() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const routeAnimationTimerRef = useRef(null); // Thêm ref để lưu timer
-  const routeAnimationStateRef = useRef({ currentIndex: 1, fullCoordinates: [], isPaused: false }); // Lưu trạng thái animation
+  const routeAnimationIdRef = useRef(null); // requestAnimationFrame ID
+  const routeAnimationStateRef = useRef({
+    currentIndex: 1,
+    fullCoordinates: [],
+    isPaused: false,
+    startTime: null, // Thời gian bắt đầu animation
+  }); // Lưu trạng thái animation
   const [shouldDrawRoute, setShouldDrawRoute] = useState(false); // mặc định là false → không vẽ animation
   const [showStaticRoute, setShowStaticRoute] = useState(false); // Bật/tắt hiển thị lộ trình tĩnh
   const [isPaused, setIsPaused] = useState(false); // Trạng thái tạm dừng
@@ -255,9 +261,29 @@ export default function RouteMap() {
     }
   }, []);
 
+  // ========== HÀM KIỂM TRA CÓ MARKER POS GẦN ĐÓ KHÔNG ==========
+  const hasNearbyPOSMarker = useCallback(
+    (salemanCoord, posPoints, thresholdMeters = 5) => {
+      if (!posPoints || posPoints.length === 0) return false;
+      if (!salemanCoord) return false;
+
+      // Kiểm tra xem có điểm POS nào trong bán kính thresholdMeters không
+      for (const pos of posPoints) {
+        if (!pos.long || !pos.lat) continue;
+        const posCoord = [parseFloat(pos.long), parseFloat(pos.lat)];
+        const distance = getDistanceMeters(salemanCoord, posCoord);
+        if (distance <= thresholdMeters) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [getDistanceMeters]
+  );
+
   // ========== HÀM VẼ MARKER CHO SALEMAN ==========
   const updateSalemanMarker = useCallback(
-    (map, coordinates) => {
+    (map, coordinates, forceNoRotate = false) => {
       if (!coordinates || coordinates.length === 0) return;
 
       // Xóa source và layer cũ nếu có
@@ -271,7 +297,10 @@ export default function RouteMap() {
 
       if (!currentPosition) return;
 
-      // Tạo GeoJSON cho marker saleman
+      // Kiểm tra có marker POS gần đó không
+      const hasNearbyPOS = hasNearbyPOSMarker(currentPosition, pointOfSale, 150);
+
+      // Tạo GeoJSON cho marker saleman với hasNearby property
       const salemanMarkerGeoJSON = {
         type: "FeatureCollection",
         features: [
@@ -283,6 +312,7 @@ export default function RouteMap() {
             },
             properties: {
               salemanCode: salemanCode,
+              hasNearby: hasNearbyPOS ? 1 : 0, // Thêm property để dùng trong expression
             },
           },
         ],
@@ -308,21 +338,28 @@ export default function RouteMap() {
       };
 
       loadImageFromSVG(saleman_icon, "icon-saleman-current", () => {
-        // Thêm layer cho saleman marker
-        if (!map.getLayer("saleman-marker-point")) {
-          map.addLayer({
-            id: "saleman-marker-point",
-            type: "symbol",
-            source: "saleman-marker",
-            layout: {
-              "icon-image": "icon-saleman-current",
-              "icon-size": ["step", ["zoom"], 0.8, 16, 1.0],
-              "icon-allow-overlap": true,
-              "icon-anchor": "bottom",
-              "icon-rotate": ["step", ["zoom"], -45, 16, 0], // Xoay -45 độ khi zoom ra (< 12), không xoay khi zoom vào (>= 12)
-            },
-          });
+        // Xóa layer cũ nếu có để tạo lại với icon-rotate mới
+        if (map.getLayer("saleman-marker-point")) {
+          map.removeLayer("saleman-marker-point");
+        }
 
+        // Thêm layer mới cho saleman marker
+        map.addLayer({
+          id: "saleman-marker-point",
+          type: "symbol",
+          source: "saleman-marker",
+          layout: {
+            "icon-image": "icon-saleman-current",
+            "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
+            "icon-allow-overlap": true,
+            "icon-anchor": "bottom",
+            "icon-rotate": ["case", ["==", ["get", "hasNearby"], 1], 45, 0],
+            "icon-rotation-alignment": "map",
+          },
+        });
+
+        // Đăng ký event listeners chỉ 1 lần (kiểm tra xem đã đăng ký chưa)
+        if (!map._salemanEventsRegistered) {
           // Click vào marker → hiện popup (popup này sẽ không tự đóng khi mouseleave)
           map.on("click", "saleman-marker-point", (e) => {
             e.originalEvent.stopPropagation();
@@ -353,10 +390,13 @@ export default function RouteMap() {
               closeSalemanPopup(map);
             }
           });
+
+          // Đánh dấu đã đăng ký events
+          map._salemanEventsRegistered = true;
         }
       });
     },
-    [salemanCode, showSalemanPopup, closeSalemanPopup]
+    [salemanCode, showSalemanPopup, closeSalemanPopup, hasNearbyPOSMarker, pointOfSale]
   );
 
   // ========== HÀM CẬP NHẬT DỮ LIỆU ĐIỂM BÁN ==========
@@ -370,7 +410,7 @@ export default function RouteMap() {
       map.removeSource("pointOfSale");
     }
 
-    // Tạo GeoJSON cho điểm bán (POS)
+    // Tạo GeoJSON cho điểm bán (POS) - không cần tính hasNearby vì POS không xoay
     const pointOfSaleGeoJSON = {
       type: "FeatureCollection",
       features: points
@@ -461,10 +501,11 @@ export default function RouteMap() {
             "icon-pos-red",
             "icon-pos-gray",
           ],
-          "icon-size": ["step", ["zoom"], 0.8, 16, 1.0],
+          "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
           "icon-allow-overlap": true,
           "icon-anchor": "bottom",
-          "icon-rotate": ["step", ["zoom"], 45, 16, 0], // Xoay -45 độ khi zoom ra (< 12), không xoay khi zoom vào (>= 12)
+          // POS markers không xoay
+          "icon-rotate": 0,
         },
       });
     };
@@ -478,7 +519,6 @@ export default function RouteMap() {
 
   // ========== HÀM VẼ ROUTE TĨNH (KHÔNG ANIMATION) ==========
   const drawRouteStatic = useCallback((map, coordinates) => {
-    // console.log("🎨 [drawRouteStatic] Hàm được gọi với", coordinates?.length || 0, "điểm");
     if (!coordinates || coordinates.length === 0) {
       // console.log("⚠️ [drawRouteStatic] Coordinates rỗng, không vẽ");
       return;
@@ -488,6 +528,12 @@ export default function RouteMap() {
     if (routeAnimationTimerRef.current) {
       clearInterval(routeAnimationTimerRef.current);
       routeAnimationTimerRef.current = null;
+    }
+
+    // Cancel animation frame nếu có
+    if (routeAnimationIdRef.current) {
+      cancelAnimationFrame(routeAnimationIdRef.current);
+      routeAnimationIdRef.current = null;
     }
 
     // Xóa source và layer cũ của route tĩnh nếu có
@@ -600,60 +646,120 @@ export default function RouteMap() {
   }, []);
 
   // ========== HÀM BẮT ĐẦU ANIMATION ROUTE ==========
-  const startRouteAnimation = useCallback((map, fullCoordinates, startIndex = 1) => {
-    if (!map || !map.getSource("route")) return;
+  const startRouteAnimation = useCallback(
+    (map, fullCoordinates, startIndex = 1) => {
+      if (!map || !map.getSource("route")) return;
 
-    setIsAnimating(true);
-    setIsPaused(false);
-    routeAnimationStateRef.current.isPaused = false;
-    routeAnimationStateRef.current.currentIndex = startIndex;
-    routeAnimationStateRef.current.fullCoordinates = fullCoordinates;
+      setIsAnimating(true);
+      setIsPaused(false);
+      routeAnimationStateRef.current.isPaused = false;
+      routeAnimationStateRef.current.currentIndex = startIndex;
+      routeAnimationStateRef.current.fullCoordinates = fullCoordinates;
+      routeAnimationStateRef.current.startTime = null; // Reset start time
 
-    routeAnimationTimerRef.current = setInterval(() => {
-      // Kiểm tra nếu đang pause thì không làm gì
-      if (routeAnimationStateRef.current.isPaused) {
-        return;
+      // Cập nhật marker với forceNoRotate = true khi bắt đầu animation
+      if (fullCoordinates.length > 0) {
+        const currentCoords = fullCoordinates.slice(0, startIndex);
+        updateSalemanMarker(map, currentCoords.length > 0 ? currentCoords : fullCoordinates, true);
       }
 
-      const i = routeAnimationStateRef.current.currentIndex;
-      const coords = routeAnimationStateRef.current.fullCoordinates;
+      // Hàm cập nhật line và marker
+      const updateLineAndMarker = (coords, index) => {
+        if (!map.getSource("route")) return;
 
-      if (i < coords.length && map.getSource("route")) {
-        // Lấy data hiện tại
+        // 1. Cập nhật line
         const currentData = map.getSource("route")._data;
-
-        // Thêm điểm mới vào coordinates
-        currentData.features[0].geometry.coordinates.push(coords[i]);
-
-        // Update source với data mới
+        currentData.features[0].geometry.coordinates.push(coords[index]);
         map.getSource("route").setData(currentData);
 
-        // Pan map đến điểm mới
-        map.panTo(coords[i]);
-
-        routeAnimationStateRef.current.currentIndex = i + 1;
-      } else {
-        // Dừng animation khi đã vẽ hết
-        if (routeAnimationTimerRef.current) {
-          clearInterval(routeAnimationTimerRef.current);
-          routeAnimationTimerRef.current = null;
+        // 2. Cập nhật marker salesman
+        if (map.getSource("saleman-marker")) {
+          const salemanMarkerData = {
+            type: "FeatureCollection",
+            features: [
+              {
+                type: "Feature",
+                geometry: {
+                  type: "Point",
+                  coordinates: coords[index],
+                },
+                properties: { salemanCode: salemanCode },
+              },
+            ],
+          };
+          map.getSource("saleman-marker").setData(salemanMarkerData);
         }
-        setIsAnimating(false);
 
-        // Fit bounds để hiển thị toàn bộ route sau khi vẽ xong
-        if (coords.length > 0) {
-          const bounds = coords.reduce((bounds, coord) => {
-            return bounds.extend(coord);
-          }, new window.goongjs.LngLatBounds(coords[0], coords[0]));
+        // 3. Pan map đến điểm mới
+        map.panTo(coords[index]);
+      };
 
-          map.fitBounds(bounds, {
-            padding: { top: 50, bottom: 50, left: 50, right: 50 },
-            duration: 2000,
-          });
+      // Hàm animate với requestAnimationFrame
+      const animate = (timestamp) => {
+        // Kiểm tra nếu đang pause thì không làm gì
+        if (routeAnimationStateRef.current.isPaused) {
+          routeAnimationIdRef.current = requestAnimationFrame(animate);
+          return;
         }
-      }
-    }, 300); // Interval 200ms - Tốc độ vẽ
-  }, []);
+
+        // Khởi tạo startTime lần đầu
+        if (!routeAnimationStateRef.current.startTime) {
+          routeAnimationStateRef.current.startTime = timestamp;
+        }
+
+        const elapsed = timestamp - routeAnimationStateRef.current.startTime;
+        const coords = routeAnimationStateRef.current.fullCoordinates;
+
+        // Tính index dựa trên thời gian (300ms mỗi bước)
+        const calculatedIndex = Math.floor(elapsed / 300) + startIndex;
+
+        // Chỉ cập nhật khi có điểm mới
+        if (
+          calculatedIndex > routeAnimationStateRef.current.currentIndex &&
+          calculatedIndex < coords.length
+        ) {
+          // Cập nhật tất cả các điểm từ currentIndex đến calculatedIndex
+          for (let i = routeAnimationStateRef.current.currentIndex; i < calculatedIndex; i++) {
+            updateLineAndMarker(coords, i);
+          }
+          routeAnimationStateRef.current.currentIndex = calculatedIndex;
+        }
+
+        // Tiếp tục animation nếu chưa hết
+        if (calculatedIndex < coords.length) {
+          routeAnimationIdRef.current = requestAnimationFrame(animate);
+        } else {
+          // Dừng animation khi đã vẽ hết
+          if (routeAnimationIdRef.current) {
+            cancelAnimationFrame(routeAnimationIdRef.current);
+            routeAnimationIdRef.current = null;
+          }
+          setIsAnimating(false);
+
+          // Khôi phục lại marker về trạng thái bình thường (không force no rotate)
+          if (coords.length > 0) {
+            updateSalemanMarker(map, coords, false);
+          }
+
+          // Fit bounds để hiển thị toàn bộ route sau khi vẽ xong
+          if (coords.length > 0) {
+            const bounds = coords.reduce((bounds, coord) => {
+              return bounds.extend(coord);
+            }, new window.goongjs.LngLatBounds(coords[0], coords[0]));
+
+            map.fitBounds(bounds, {
+              padding: { top: 50, bottom: 50, left: 50, right: 50 },
+              duration: 2000,
+            });
+          }
+        }
+      };
+
+      // Bắt đầu animation
+      routeAnimationIdRef.current = requestAnimationFrame(animate);
+    },
+    [salemanCode, hasNearbyPOSMarker, pointOfSale, updateSalemanMarker]
+  );
 
   // ========== HÀM VẼ ROUTE TỪ SALEMAN TRACKING ==========
   const updateRouteData = useCallback(
@@ -978,6 +1084,11 @@ export default function RouteMap() {
         clearInterval(routeAnimationTimerRef.current);
         routeAnimationTimerRef.current = null;
       }
+      //  Cancel animation frame
+      if (routeAnimationIdRef.current) {
+        cancelAnimationFrame(routeAnimationIdRef.current);
+        routeAnimationIdRef.current = null;
+      }
     };
   }, []);
 
@@ -985,6 +1096,8 @@ export default function RouteMap() {
   const handlePause = useCallback(() => {
     routeAnimationStateRef.current.isPaused = true;
     setIsPaused(true);
+    // Lưu lại thời gian đã trôi qua
+    routeAnimationStateRef.current.pausedTime = performance.now();
   }, []);
 
   // ========== HÀM XỬ LÝ TIẾP TỤC ==========
@@ -1004,23 +1117,40 @@ export default function RouteMap() {
     routeAnimationStateRef.current.isPaused = false;
     setIsPaused(false);
 
-    // Nếu timer đã bị clear, tạo lại
-    if (!routeAnimationTimerRef.current) {
+    // Điều chỉnh startTime để tiếp tục từ vị trí đúng
+    if (routeAnimationStateRef.current.pausedTime && routeAnimationStateRef.current.startTime) {
+      const pauseDuration = performance.now() - routeAnimationStateRef.current.pausedTime;
+      routeAnimationStateRef.current.startTime += pauseDuration;
+    }
+
+    // Nếu animation đã dừng hoàn toàn, khởi động lại
+    if (!routeAnimationIdRef.current) {
       startRouteAnimation(map, fullCoordinates, currentIndex);
     }
   }, [startRouteAnimation]);
 
   // ========== HÀM XỬ LÝ DỪNG LUÔN ==========
   const handleStop = useCallback(() => {
-    // Clear timer
+    // Clear timer cũ (nếu còn dùng setInterval ở đâu đó)
     if (routeAnimationTimerRef.current) {
       clearInterval(routeAnimationTimerRef.current);
       routeAnimationTimerRef.current = null;
     }
 
+    // Cancel animation frame
+    if (routeAnimationIdRef.current) {
+      cancelAnimationFrame(routeAnimationIdRef.current);
+      routeAnimationIdRef.current = null;
+    }
+
     // Xóa route trên map
     const map = mapRef.current;
     if (map && map.loaded()) {
+      // Khôi phục lại marker về trạng thái bình thường
+      if (routeCoordinates.length > 0) {
+        updateSalemanMarker(map, routeCoordinates, false);
+      }
+
       // Xóa route animation layers
       if (map.getLayer("route-line")) {
         map.removeLayer("route-line");
@@ -1042,8 +1172,13 @@ export default function RouteMap() {
     setShouldDrawRoute(false);
     setIsPaused(false);
     setIsAnimating(false);
-    routeAnimationStateRef.current = { currentIndex: 1, fullCoordinates: [], isPaused: false };
-  }, []);
+    routeAnimationStateRef.current = {
+      currentIndex: 1,
+      fullCoordinates: [],
+      isPaused: false,
+      startTime: null,
+    };
+  }, [updateSalemanMarker, routeCoordinates]);
 
   // ========== VẼ ROUTE TĨNH KHI CÓ DỮ LIỆU ROUTE & MAP ĐÃ LOAD ==========
   useEffect(() => {
