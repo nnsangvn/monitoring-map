@@ -298,7 +298,7 @@ export default function RouteMap() {
       if (!currentPosition) return;
 
       // Kiểm tra có marker POS gần đó không
-      const hasNearbyPOS = hasNearbyPOSMarker(currentPosition, pointOfSale, 5);
+      const hasNearbyPOS = hasNearbyPOSMarker(currentPosition, pointOfSale, 150);
 
       // Tạo GeoJSON cho marker saleman với hasNearby property
       const salemanMarkerGeoJSON = {
@@ -353,7 +353,7 @@ export default function RouteMap() {
             "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
             "icon-allow-overlap": true,
             "icon-anchor": "bottom",
-            "icon-rotate": ["case", ["==", ["get", "hasNearby"], 1], -45, 0],
+            "icon-rotate": ["case", ["==", ["get", "hasNearby"], 1], 45, 0],
             "icon-rotation-alignment": "map",
           },
         });
@@ -400,172 +400,122 @@ export default function RouteMap() {
   );
 
   // ========== HÀM CẬP NHẬT DỮ LIỆU ĐIỂM BÁN ==========
-  const updatePointOfSaleData = useCallback(
-    (map, points) => {
-      // Xóa source và layers cũ nếu có
-      if (map.getSource("pointOfSale")) {
-        if (map.getLayer("point-of-sale-points")) map.removeLayer("point-of-sale-points");
-        if (map.getLayer("point-of-sale-cluster-count"))
-          map.removeLayer("point-of-sale-cluster-count");
-        if (map.getLayer("point-of-sale-clusters")) map.removeLayer("point-of-sale-clusters");
-        map.removeSource("pointOfSale");
-      }
+  const updatePointOfSaleData = useCallback((map, points) => {
+    // Xóa source và layers cũ nếu có
+    if (map.getSource("pointOfSale")) {
+      if (map.getLayer("point-of-sale-points")) map.removeLayer("point-of-sale-points");
+      if (map.getLayer("point-of-sale-cluster-count"))
+        map.removeLayer("point-of-sale-cluster-count");
+      if (map.getLayer("point-of-sale-clusters")) map.removeLayer("point-of-sale-clusters");
+      map.removeSource("pointOfSale");
+    }
 
-      // Tạo danh sách tất cả markers để kiểm tra khoảng cách
-      const allMarkers = [];
-
-      // Thêm vị trí saleman nếu có
-      if (routeCoordinates.length > 0) {
-        allMarkers.push({
-          coordinates: routeCoordinates[routeCoordinates.length - 1],
-        });
-      }
-
-      // Thêm tất cả POS
-      points.forEach((point) => {
-        if (point.long && point.lat) {
-          allMarkers.push({
+    // Tạo GeoJSON cho điểm bán (POS) - không cần tính hasNearby vì POS không xoay
+    const pointOfSaleGeoJSON = {
+      type: "FeatureCollection",
+      features: points
+        .filter((point) => point.long && point.lat)
+        .map((point) => ({
+          type: "Feature",
+          geometry: {
+            type: "Point",
             coordinates: [parseFloat(point.long), parseFloat(point.lat)],
-          });
-        }
+          },
+          properties: {
+            ...point,
+            marker: point.marker?.toUpperCase() || "GRAY",
+          },
+        })),
+    };
+
+    // Thêm source mới
+    map.addSource("pointOfSale", {
+      type: "geojson",
+      data: pointOfSaleGeoJSON,
+      cluster: true,
+      clusterMaxZoom: 14,
+      clusterRadius: 50,
+    });
+
+    const pos_green = createSVGMarker(APP_COLORS.GREEN, POS_ICON_SVG);
+    const pos_yellow = createSVGMarker(APP_COLORS.YELLOW, POS_ICON_SVG);
+    const pos_red = createSVGMarker(APP_COLORS.RED, POS_ICON_SVG);
+    const pos_gray = createSVGMarker(APP_COLORS.GRAY, POS_ICON_SVG);
+
+    // Hàm load image từ SVG
+    const loadImageFromSVG = (svg, name, callback) => {
+      const img = new Image();
+      img.onload = () => {
+        map.addImage(name, img);
+        callback();
+      };
+      img.src = "data:image/svg+xml;base64," + btoa(svg);
+    };
+
+    const onAllLoaded = () => {
+      if (map.getLayer("point-of-sale-clusters")) return;
+      // === LAYER 1: CLUSTER CIRCLES ===
+      map.addLayer({
+        id: "point-of-sale-clusters",
+        type: "circle",
+        source: "pointOfSale",
+        filter: ["has", "point_count"],
+        paint: {
+          "circle-color": ["step", ["get", "point_count"], "#61A340", 10, "#FCEA24", 30, "#F01919"],
+          "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 30, 40],
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#ffffff",
+          "circle-opacity": 0.9,
+        },
       });
 
-      // Tạo GeoJSON cho điểm bán (POS) với hasNearby property
-      const pointOfSaleGeoJSON = {
-        type: "FeatureCollection",
-        features: points
-          .filter((point) => point.long && point.lat)
-          .map((point) => {
-            const coords = [parseFloat(point.long), parseFloat(point.lat)];
-
-            // Kiểm tra có marker khác gần không (loại trừ chính nó)
-            const otherMarkers = allMarkers.filter(
-              (m) => m.coordinates[0] !== coords[0] || m.coordinates[1] !== coords[1]
-            );
-
-            // Kiểm tra khoảng cách đến các marker khác
-            let hasNearby = false;
-            for (const marker of otherMarkers) {
-              const distance = getDistanceMeters(coords, marker.coordinates);
-              if (distance <= 5) {
-                // 5 mét
-                hasNearby = true;
-                break;
-              }
-            }
-
-            return {
-              type: "Feature",
-              geometry: {
-                type: "Point",
-                coordinates: coords,
-              },
-              properties: {
-                ...point,
-                marker: point.marker?.toUpperCase() || "GRAY",
-                hasNearby: hasNearby ? 1 : 0, // Thêm property để dùng trong expression
-              },
-            };
-          }),
-      };
-
-      // Thêm source mới
-      map.addSource("pointOfSale", {
-        type: "geojson",
-        data: pointOfSaleGeoJSON,
-        cluster: true,
-        clusterMaxZoom: 14,
-        clusterRadius: 50,
+      // === LAYER 2: CLUSTER COUNT ===
+      map.addLayer({
+        id: "point-of-sale-cluster-count",
+        type: "symbol",
+        source: "pointOfSale",
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": "{point_count_abbreviated}",
+          "text-size": 12,
+        },
+        paint: {
+          "text-color": "#ffffff",
+        },
       });
 
-      const pos_green = createSVGMarker(APP_COLORS.GREEN, POS_ICON_SVG);
-      const pos_yellow = createSVGMarker(APP_COLORS.YELLOW, POS_ICON_SVG);
-      const pos_red = createSVGMarker(APP_COLORS.RED, POS_ICON_SVG);
-      const pos_gray = createSVGMarker(APP_COLORS.GRAY, POS_ICON_SVG);
+      // === LAYER 3: UNCLUSTERED POINTS ===
+      map.addLayer({
+        id: "point-of-sale-points",
+        type: "symbol",
+        source: "pointOfSale",
+        filter: ["!", ["has", "point_count"]],
+        layout: {
+          "icon-image": [
+            "case",
+            ["==", ["get", "marker"], "GREEN"],
+            "icon-pos-green",
+            ["==", ["get", "marker"], "YELLOW"],
+            "icon-pos-yellow",
+            ["==", ["get", "marker"], "RED"],
+            "icon-pos-red",
+            "icon-pos-gray",
+          ],
+          "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
+          "icon-allow-overlap": true,
+          "icon-anchor": "bottom",
+          // POS markers không xoay
+          "icon-rotate": 0,
+        },
+      });
+    };
 
-      // Hàm load image từ SVG
-      const loadImageFromSVG = (svg, name, callback) => {
-        const img = new Image();
-        img.onload = () => {
-          map.addImage(name, img);
-          callback();
-        };
-        img.src = "data:image/svg+xml;base64," + btoa(svg);
-      };
-
-      const onAllLoaded = () => {
-        if (map.getLayer("point-of-sale-clusters")) return;
-        // === LAYER 1: CLUSTER CIRCLES ===
-        map.addLayer({
-          id: "point-of-sale-clusters",
-          type: "circle",
-          source: "pointOfSale",
-          filter: ["has", "point_count"],
-          paint: {
-            "circle-color": [
-              "step",
-              ["get", "point_count"],
-              "#61A340",
-              10,
-              "#FCEA24",
-              30,
-              "#F01919",
-            ],
-            "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 30, 40],
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#ffffff",
-            "circle-opacity": 0.9,
-          },
-        });
-
-        // === LAYER 2: CLUSTER COUNT ===
-        map.addLayer({
-          id: "point-of-sale-cluster-count",
-          type: "symbol",
-          source: "pointOfSale",
-          filter: ["has", "point_count"],
-          layout: {
-            "text-field": "{point_count_abbreviated}",
-            "text-size": 12,
-          },
-          paint: {
-            "text-color": "#ffffff",
-          },
-        });
-
-        // === LAYER 3: UNCLUSTERED POINTS ===
-        map.addLayer({
-          id: "point-of-sale-points",
-          type: "symbol",
-          source: "pointOfSale",
-          filter: ["!", ["has", "point_count"]],
-          layout: {
-            "icon-image": [
-              "case",
-              ["==", ["get", "marker"], "GREEN"],
-              "icon-pos-green",
-              ["==", ["get", "marker"], "YELLOW"],
-              "icon-pos-yellow",
-              ["==", ["get", "marker"], "RED"],
-              "icon-pos-red",
-              "icon-pos-gray",
-            ],
-            "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
-            "icon-allow-overlap": true,
-            "icon-anchor": "bottom",
-            "icon-rotate": ["case", ["==", ["get", "hasNearby"], 1], 45, 0],
-          },
-        });
-      };
-
-      // Load icon cho tất cả điểm bán
-      loadImageFromSVG(pos_green, "icon-pos-green", onAllLoaded);
-      loadImageFromSVG(pos_yellow, "icon-pos-yellow", onAllLoaded);
-      loadImageFromSVG(pos_red, "icon-pos-red", onAllLoaded);
-      loadImageFromSVG(pos_gray, "icon-pos-gray", onAllLoaded);
-    },
-    [routeCoordinates, getDistanceMeters]
-  );
+    // Load icon cho tất cả điểm bán
+    loadImageFromSVG(pos_green, "icon-pos-green", onAllLoaded);
+    loadImageFromSVG(pos_yellow, "icon-pos-yellow", onAllLoaded);
+    loadImageFromSVG(pos_red, "icon-pos-red", onAllLoaded);
+    loadImageFromSVG(pos_gray, "icon-pos-gray", onAllLoaded);
+  }, []);
 
   // ========== HÀM VẼ ROUTE TĨNH (KHÔNG ANIMATION) ==========
   const drawRouteStatic = useCallback((map, coordinates) => {
