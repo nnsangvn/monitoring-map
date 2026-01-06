@@ -1021,10 +1021,20 @@ export default function RouteMap() {
     // Xóa route trên map
     const map = mapRef.current;
     if (map && map.loaded()) {
+      // Xóa route animation layers
+      if (map.getLayer("route-line")) {
+        map.removeLayer("route-line");
+      }
+      if (map.getLayer("route-start-point")) {
+        map.removeLayer("route-start-point");
+      }
+
+      // Xóa route animation sources - QUAN TRỌNG: Xóa riêng từng source
       if (map.getSource("route")) {
-        if (map.getLayer("route-line")) map.removeLayer("route-line");
-        if (map.getLayer("route-start-point")) map.removeLayer("route-start-point");
         map.removeSource("route");
+      }
+      if (map.getSource("route-start-point")) {
+        map.removeSource("route-start-point");
       }
     }
 
