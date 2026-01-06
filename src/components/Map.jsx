@@ -51,8 +51,8 @@ export default function Map() {
       const salesman = salesmen.find((sm) => sm.code === parentCode);
 
       if (!salesman) {
-        console.warn(`⚠️ Không tìm thấy salesman với code: ${parentCode}`);
-        alert(`Không tìm thấy nhân viên với mã: ${parentCode}`);
+        // console.warn(`⚠️ Không tìm thấy salesman với code: ${parentCode}`);
+        // alert(`Không tìm thấy sale với mã: ${parentCode}`);
         return;
       }
 
