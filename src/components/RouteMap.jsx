@@ -9,6 +9,7 @@ import accessToken from "./access_token.jsx";
 import { usePointofSale } from "../hooks/usePointofSale.js";
 import { useSalemanRouteTracking } from "../hooks/useSalemanRouteTracking.js";
 import { Alert, Button } from "antd";
+import MapLegend from "./MapLegend.jsx";
 
 goongjs.accessToken = accessToken;
 
@@ -1361,6 +1362,9 @@ export default function RouteMap() {
           </Button>
         </div>
       )}
+
+      {/* Map Legend - Chú thích */}
+      <MapLegend />
 
       <div ref={mapContainer} style={{ width: "100vw", height: "100vh" }} />
     </div>
