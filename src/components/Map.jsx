@@ -274,8 +274,8 @@ export default function Map() {
     };
   };
 
-  // === UPDATE SALESMEN DATA ===
-  const updateSalesmenData = useCallback(
+  // ========== HÀM CẬP NHẬT DỮ LIỆU MAP (GỘP SALEMAN + POS) ==========
+  const updateMapData = useCallback(
     (map, salesmen) => {
       // Xóa source và layers cũ nếu có
       if (map.getSource("map-data")) {
@@ -715,9 +715,9 @@ export default function Map() {
     if (saleMan.length === 0) return;
 
     // Gọi hàm vẽ data
-    updateSalesmenData(mapRef.current, saleMan);
+    updateMapData(mapRef.current, saleMan);
     flyToSalesman(mapRef.current, saleMan);
-  }, [saleMan, isMapLoaded, updateSalesmenData, flyToSalesman]);
+  }, [saleMan, isMapLoaded, updateMapData, flyToSalesman]);
 
   return (
     <div
