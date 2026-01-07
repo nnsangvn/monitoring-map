@@ -333,7 +333,7 @@ export default function Map() {
         clusterRadius: 50,
       });
 
-      // Tạm thời tất cả nhân viên dùng màu xanh
+      // Tạo icon cho saleman và POS, (Layer type: "symbol")
       const saleman_green = createSVGMarker(APP_COLORS.GREEN, USER_ICON_SVG);
       const saleman_red = createSVGMarker(APP_COLORS.RED, USER_ICON_SVG);
       const saleman_yellow = createSVGMarker(APP_COLORS.YELLOW, USER_ICON_SVG);

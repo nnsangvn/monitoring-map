@@ -15,6 +15,7 @@ goongjs.accessToken = accessToken;
 export default function RouteMap() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
+  const [isMapLoaded, setIsMapLoaded] = useState(false); // Thêm state để track map đã load
   const routeAnimationTimerRef = useRef(null); // Thêm ref để lưu timer
   const routeAnimationIdRef = useRef(null); // requestAnimationFrame ID
   const routeAnimationStateRef = useRef({
@@ -362,6 +363,11 @@ export default function RouteMap() {
 
       // Hàm load image từ SVG
       const loadImageFromSVG = (svg, name, callback) => {
+        // Kiểm tra nếu image đã tồn tại thì không load lại
+        if (map.hasImage(name)) {
+          callback();
+          return;
+        }
         const img = new Image();
         img.onload = () => {
           map.addImage(name, img);
@@ -460,7 +466,7 @@ export default function RouteMap() {
         });
 
         // Đăng ký event listeners chỉ 1 lần (kiểm tra xem đã đăng ký chưa)
-        if (!map._salemanEventsRegistered) {
+        if (!map._mapDataEventsRegistered) {
           // Click vào marker saleman → hiện popup
           map.on("click", "saleman-marker-point", (e) => {
             e.originalEvent.stopPropagation();
@@ -490,7 +496,7 @@ export default function RouteMap() {
           });
 
           // Đánh dấu đã đăng ký events
-          map._salemanEventsRegistered = true;
+          map._mapDataEventsRegistered = true;
         }
       };
 
@@ -941,6 +947,8 @@ export default function RouteMap() {
     mapRef.current = map;
 
     map.on("load", () => {
+      setIsMapLoaded(true); // Đánh dấu map đã load
+
       // TẮT POI + NHÃN KHÔNG CẦN (chờ map load xong)
       // Danh sách các layer cần GIỮ LẠI (whitelist)
       const keepLayers = new Set([
@@ -1105,16 +1113,17 @@ export default function RouteMap() {
 
     return () => {
       map.remove();
+      setIsMapLoaded(false);
     };
   }, []); // CHỈ chạy 1 lần khi mount
 
   // ========== CẬP NHẬT DỮ LIỆU MAP KHI pointOfSale HOẶC routeCoordinates THAY ĐỔI ==========
   useEffect(() => {
-    if (!mapRef.current || !mapRef.current.loaded()) return;
+    if (!mapRef.current || !isMapLoaded) return;
 
     // Cập nhật map data với cả saleman và POS
     updateMapData(mapRef.current, routeCoordinates, pointOfSale);
-  }, [pointOfSale, routeCoordinates, updateMapData]);
+  }, [pointOfSale, routeCoordinates, isMapLoaded, updateMapData]);
 
   // Cleanup timer khi component unmount
   useEffect(() => {
@@ -1222,7 +1231,7 @@ export default function RouteMap() {
   // ========== VẼ ROUTE TĨNH KHI CÓ DỮ LIỆU ROUTE & MAP ĐÃ LOAD ==========
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.loaded()) return;
+    if (!map || !isMapLoaded) return;
 
     // Nếu tắt showStaticRoute thì xóa layer/static source nếu có
     if (!showStaticRoute) {
@@ -1252,16 +1261,16 @@ export default function RouteMap() {
 
     // console.log("✅ [drawRouteStatic] Bắt đầu vẽ route tĩnh với", routeCoordinates.length, "điểm");
     drawRouteStatic(map, routeCoordinates);
-  }, [routeCoordinates, showStaticRoute, drawRouteStatic]);
+  }, [routeCoordinates, showStaticRoute, isMapLoaded, drawRouteStatic]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.loaded()) return;
+    if (!map || !isMapLoaded) return;
     if (!shouldDrawRoute) return;
     if (routeCoordinates.length === 0) return;
 
     updateRouteData(map, routeCoordinates);
-  }, [shouldDrawRoute, routeCoordinates, updateRouteData]);
+  }, [shouldDrawRoute, routeCoordinates, isMapLoaded, updateRouteData]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100vh" }}>
