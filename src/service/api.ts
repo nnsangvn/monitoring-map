@@ -11,7 +11,7 @@ const fetchSaleMan = (parent_code: string) => {
 
 // Danh sách điểm bán
 // Example from:1-12-2025 to:31-12-2025  dd-mm-yyyy
-const getPointOfSale = (salemanCode: string, from?: string, to?: string) => {
+const getPointOfSale = (salemanCode: string, from: string, to: string) => {
   const URL = `https://api-smac.newweb.vn/v0/client/get-client-info-by-map?saleman_code=${salemanCode}&from=${from}&to=${to}`;
   return axiosClient.get(URL);
 };
