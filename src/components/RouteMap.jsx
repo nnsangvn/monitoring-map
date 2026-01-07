@@ -464,40 +464,6 @@ export default function RouteMap() {
             "icon-rotate": 0,
           },
         });
-
-        // Đăng ký event listeners chỉ 1 lần (kiểm tra xem đã đăng ký chưa)
-        if (!map._mapDataEventsRegistered) {
-          // Click vào marker saleman → hiện popup
-          map.on("click", "saleman-marker-point", (e) => {
-            e.originalEvent.stopPropagation();
-            const feature = e.features[0];
-            if (map._salemanPopup) {
-              closeSalemanPopup(map);
-            } else {
-              showSalemanPopup(map, salemanCode, feature.geometry.coordinates, true);
-            }
-          });
-
-          // Hover vào marker saleman → hiện popup
-          map.on("mouseenter", "saleman-marker-point", (e) => {
-            map.getCanvas().style.cursor = "pointer";
-            const feature = e.features[0];
-            if (!map._salemanPopup || !map._salemanPopup._isFromClick) {
-              showSalemanPopup(map, salemanCode, feature.geometry.coordinates, false);
-            }
-          });
-
-          // Mouseleave → đóng popup
-          map.on("mouseleave", "saleman-marker-point", () => {
-            map.getCanvas().style.cursor = "";
-            if (map._salemanPopup && !map._salemanPopup._isFromClick) {
-              closeSalemanPopup(map);
-            }
-          });
-
-          // Đánh dấu đã đăng ký events
-          map._mapDataEventsRegistered = true;
-        }
       };
 
       // Load icons
@@ -1054,7 +1020,41 @@ export default function RouteMap() {
       // === 4. NÚT FULLSCREEN ===
       map.addControl(new goongjs.FullscreenControl());
 
-      // Setup event handlers cho click và hover
+      // ========== SETUP EVENT HANDLERS CHO CLICK VÀ HOVER ==========
+
+      // === EVENT HANDLERS CHO SALEMAN MARKER ===
+      // Click vào marker saleman → hiện popup (popup này sẽ không tự đóng khi mouseleave)
+      map.on("click", "saleman-marker-point", (e) => {
+        e.originalEvent.stopPropagation();
+        const feature = e.features[0];
+        // Nếu popup đã tồn tại và đang hiển thị, đóng nó đi
+        if (map._salemanPopup) {
+          closeSalemanPopup(map);
+        } else {
+          showSalemanPopup(map, salemanCode, feature.geometry.coordinates, true);
+        }
+      });
+
+      // Hover vào saleman marker → hiện popup
+      map.on("mouseenter", "saleman-marker-point", (e) => {
+        map.getCanvas().style.cursor = "pointer";
+        const feature = e.features[0];
+        // Chỉ show popup nếu chưa có popup nào từ click (tránh duplicate)
+        if (!map._salemanPopup || !map._salemanPopup._isFromClick) {
+          showSalemanPopup(map, salemanCode, feature.geometry.coordinates, false);
+        }
+      });
+
+      // Mouseleave → đóng popup (chỉ đóng popup từ hover, không đóng popup từ click)
+      map.on("mouseleave", "saleman-marker-point", () => {
+        map.getCanvas().style.cursor = "";
+        // Chỉ đóng popup nếu nó được tạo từ hover (không phải từ click)
+        if (map._salemanPopup && !map._salemanPopup._isFromClick) {
+          closeSalemanPopup(map);
+        }
+      });
+
+      // === EVENT HANDLERS CHO POS MARKER ===
       // Click vào điểm bán → hiện popup (popup này sẽ không tự đóng khi mouseleave)
       map.on("click", "point-of-sale-points", (e) => {
         e.originalEvent.stopPropagation();
@@ -1068,7 +1068,7 @@ export default function RouteMap() {
         }
       });
 
-      // Hover vào marker → hiện popup
+      // Hover vào POS marker → hiện popup
       map.on("mouseenter", "point-of-sale-points", (e) => {
         map.getCanvas().style.cursor = "pointer";
         const feature = e.features[0];
@@ -1088,6 +1088,7 @@ export default function RouteMap() {
         }
       });
 
+      // === EVENT HANDLERS CHO CLUSTER ===
       // Click vào cluster → zoom in
       map.on("click", "point-of-sale-clusters", (e) => {
         const features = e.features;
@@ -1115,7 +1116,13 @@ export default function RouteMap() {
       map.remove();
       setIsMapLoaded(false);
     };
-  }, []); // CHỈ chạy 1 lần khi mount
+  }, [
+    salemanCode,
+    showSalemanPopup,
+    closeSalemanPopup,
+    showPointOfSalePopup,
+    closePointOfSalePopup,
+  ]); // CHỈ chạy 1 lần khi mount (các callback đều stable)
 
   // ========== CẬP NHẬT DỮ LIỆU MAP KHI pointOfSale HOẶC routeCoordinates THAY ĐỔI ==========
   useEffect(() => {
