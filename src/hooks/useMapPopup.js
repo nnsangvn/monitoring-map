@@ -54,35 +54,17 @@ export const useMapPopup = () => {
       map._salesmanPopup = null;
     }
 
-    // Kiểm tra xem salesman có phải là object hay chỉ là code
-    const salemanCode = typeof saleman === "string" ? saleman : saleman.code;
-    const salemanName = typeof saleman === "string" ? null : saleman.name;
-
-    // HTML cho popup salesman
-    let html = `
+    const html = `
       <div class="salesman-popup">
-        <ul>`;
-
-    if (salemanName) {
-      // Popup đầy đủ thông tin (dùng cho Map.jsx)
-      html += `
-          <li> <strong>${salemanName}</strong> </li>
-          <li><strong>Code:</strong> ${salemanCode}</li>
+        <ul>
+          <li> <strong>${saleman.name || saleman.saleman_name || "Nhân viên"}</strong> </li>
+          <li><strong>Code:</strong> ${saleman.code}</li>
           <li><strong>Thiết bị:</strong> ${saleman.device_name || "N/A"}</li>
-          <li><strong>Doanh số tháng:</strong> ${saleman.total_sale_formatted}</li>
-          <li><strong>Doanh số ngày:</strong> ${saleman.total_sale_day_formatted}</li>
-          <li><strong>Đã viếng thăm:</strong> ${saleman.total_visit_day} cửa hàng</li>
-          <li><strong>Chưa viếng thăm:</strong>${saleman.total_not_visit_day} </li>
-          <li><strong>Đơn hôm nay:</strong> ${saleman.order_count_day} đơn</li>`;
-    } else {
-      // Popup đơn giản (dùng cho RouteMap.jsx)
-      html += `
-          <li> <strong>Nhân viên</strong> </li>
-          <li><strong>Code:</strong> ${salemanCode}</li>
-          <li><strong>Vị trí hiện tại</strong></li>`;
-    }
-
-    html += `
+          <li><strong>Doanh số tháng:</strong> ${saleman.total_sale_formatted || "N/A"}</li>
+          <li><strong>Doanh số ngày:</strong> ${saleman.total_sale_day_formatted || "N/A"}</li>
+          <li><strong>Đã viếng thăm:</strong> ${saleman.total_visit_day || 0} cửa hàng</li>
+          <li><strong>Chưa viếng thăm:</strong> ${saleman.total_not_visit_day || 0}</li>
+          <li><strong>Đơn hôm nay:</strong> ${saleman.order_count_day || 0} đơn</li>
         </ul>
       </div>`;
 

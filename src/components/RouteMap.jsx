@@ -9,6 +9,7 @@ import accessToken from "./access_token.jsx";
 import { usePointofSale } from "../hooks/usePointofSale.js";
 import { useSalemanRouteTracking } from "../hooks/useSalemanRouteTracking.js";
 import { useMapPopup } from "../hooks/useMapPopup.js";
+import { useSaleMan } from "../hooks/useSaleMan.js";
 import { Alert, Button } from "antd";
 
 goongjs.accessToken = accessToken;
@@ -100,6 +101,12 @@ export default function RouteMap() {
   const pointOfSale = usePointofSale(salemanCode, from, to);
   const salemanTracking = useSalemanRouteTracking(salemanCode, from, to);
 
+  // Fetch thông tin đầy đủ của salesman (giống Map.jsx)
+  const saleManList = useSaleMan(salemanCode);
+
+  // Tìm thông tin salesman từ danh sách (thường chỉ có 1 phần tử)
+  const salemanInfo = saleManList && saleManList.length > 0 ? saleManList[0] : null;
+
   // Sử dụng hook để quản lý popup
   const { showSalemanPopup, closeSalemanPopup, showPointOfSalePopup, closePointOfSalePopup } =
     useMapPopup();
@@ -185,7 +192,7 @@ export default function RouteMap() {
 
   // ========== HÀM KIỂM TRA CÓ MARKER POS GẦN ĐÓ KHÔNG ==========
   const hasNearbyPOSMarker = useCallback(
-    (salemanCoord, posPoints, thresholdMeters = 5) => {
+    (salemanCoord, posPoints, thresholdMeters = 15) => {
       if (!posPoints || posPoints.length === 0) return false;
       if (!salemanCoord) return false;
 
@@ -199,6 +206,36 @@ export default function RouteMap() {
         }
       }
       return false;
+    },
+    [getDistanceMeters]
+  );
+
+  // ========== HÀM TÍNH TỌA ĐỘ ĐÃ DỊCH CHUYỂN CHO SALESMAN ==========
+  const getOffsetSalemanCoord = useCallback(
+    (long, lat, posPoints) => {
+      // Kiểm tra xem salesman có gần điểm bán hàng nào không
+      const salemanCoord = [long, lat];
+      let isNear = false;
+
+      for (const pos of posPoints) {
+        if (!pos.long || !pos.lat) continue;
+        const dist = getDistanceMeters(salemanCoord, [parseFloat(pos.long), parseFloat(pos.lat)]);
+        if (dist <= 15) {
+          isNear = true;
+          break;
+        }
+      }
+
+      // Áp dụng offset nếu gần điểm bán hàng
+      const OFFSET_METERS = 20;
+      const OFFSET_DEG = OFFSET_METERS / 111320;
+
+      if (isNear) {
+        lat -= OFFSET_DEG * 0.1; // lên trên
+        long -= OFFSET_DEG * 0.4; // sang trái
+      }
+
+      return [long, lat];
     },
     [getDistanceMeters]
   );
@@ -222,28 +259,29 @@ export default function RouteMap() {
           ? salemanCoordinates[salemanCoordinates.length - 1]
           : null;
 
-      // Kiểm tra có marker POS gần đó không
-      const hasNearbyPOS = currentPosition
-        ? hasNearbyPOSMarker(currentPosition, posPoints, 150)
-        : false;
+      // Tính tọa độ đã dịch chuyển cho saleman (nếu gần POS)
+      let offsetPosition = currentPosition;
+      if (currentPosition) {
+        offsetPosition = getOffsetSalemanCoord(currentPosition[0], currentPosition[1], posPoints);
+      }
 
       // Tạo GeoJSON gộp cả saleman VÀ point of sale
       const combinedGeoJSON = {
         type: "FeatureCollection",
         features: [
           // Feature từ saleman (nếu có)
-          ...(currentPosition
+          ...(offsetPosition
             ? [
                 {
                   type: "Feature",
                   geometry: {
                     type: "Point",
-                    coordinates: currentPosition,
+                    coordinates: offsetPosition,
                   },
                   properties: {
                     dataType: "saleman", // ← QUAN TRỌNG: đánh dấu loại data
                     salemanCode: salemanCode,
-                    hasNearby: hasNearbyPOS ? 1 : 0,
+                    hasNearby: 0, // Không xoay icon
                   },
                 },
               ]
@@ -353,7 +391,7 @@ export default function RouteMap() {
             "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
             "icon-allow-overlap": true,
             "icon-anchor": "bottom",
-            "icon-rotate": ["case", ["==", ["get", "hasNearby"], 1], 45, 0],
+            "icon-rotate": ["step", ["zoom"], -45, 16, 0],
             "icon-rotation-alignment": "map",
           },
         });
@@ -394,7 +432,7 @@ export default function RouteMap() {
       loadImageFromSVG(pos_red, "icon-pos-red", onAllLoaded);
       loadImageFromSVG(pos_gray, "icon-pos-gray", onAllLoaded);
     },
-    [salemanCode, showSalemanPopup, closeSalemanPopup, hasNearbyPOSMarker]
+    [salemanCode, getOffsetSalemanCoord]
   );
 
   // ========== HÀM CẬP NHẬT CHỈ VỊ TRÍ SALEMAN (DÙNG CHO ANIMATION) ==========
@@ -407,8 +445,12 @@ export default function RouteMap() {
       const currentPosition = coordinates[coordinates.length - 1];
       if (!currentPosition) return;
 
-      // Kiểm tra có marker POS gần đó không
-      const hasNearbyPOS = hasNearbyPOSMarker(currentPosition, pointOfSale, 150);
+      // Tính tọa độ đã dịch chuyển cho saleman (nếu gần POS)
+      const offsetPosition = getOffsetSalemanCoord(
+        currentPosition[0],
+        currentPosition[1],
+        pointOfSale
+      );
 
       // Lấy data hiện tại và cập nhật feature saleman
       const currentData = map.getSource("map-data")._data;
@@ -417,32 +459,28 @@ export default function RouteMap() {
       );
 
       if (salemanFeatureIndex !== -1) {
-        // Cập nhật vị trí saleman
-        currentData.features[salemanFeatureIndex].geometry.coordinates = currentPosition;
-        currentData.features[salemanFeatureIndex].properties.hasNearby = forceNoRotate
-          ? 0
-          : hasNearbyPOS
-          ? 1
-          : 0;
+        // Cập nhật vị trí saleman với tọa độ đã dịch chuyển
+        currentData.features[salemanFeatureIndex].geometry.coordinates = offsetPosition;
+        currentData.features[salemanFeatureIndex].properties.hasNearby = 0; // Không xoay icon
       } else {
         // Thêm feature saleman nếu chưa có
         currentData.features.unshift({
           type: "Feature",
           geometry: {
             type: "Point",
-            coordinates: currentPosition,
+            coordinates: offsetPosition,
           },
           properties: {
             dataType: "saleman",
             salemanCode: salemanCode,
-            hasNearby: forceNoRotate ? 0 : hasNearbyPOS ? 1 : 0,
+            hasNearby: 0, // Không xoay icon
           },
         });
       }
 
       map.getSource("map-data").setData(currentData);
     },
-    [salemanCode, hasNearbyPOSMarker, pointOfSale]
+    [salemanCode, pointOfSale, getOffsetSalemanCoord]
   );
 
   // ========== HÀM VẼ ROUTE TĨNH (KHÔNG ANIMATION) ==========
@@ -600,16 +638,23 @@ export default function RouteMap() {
         currentData.features[0].geometry.coordinates.push(coords[index]);
         map.getSource("route").setData(currentData);
 
-        // 2. Cập nhật marker salesman trong map-data
+        // 2. Cập nhật marker salesman trong map-data với tọa độ đã dịch chuyển
         if (map.getSource("map-data")) {
           const mapData = map.getSource("map-data")._data;
           const salemanFeatureIndex = mapData.features.findIndex(
             (f) => f.properties.dataType === "saleman"
           );
 
+          // Tính tọa độ đã dịch chuyển cho saleman
+          const offsetPosition = getOffsetSalemanCoord(
+            coords[index][0],
+            coords[index][1],
+            pointOfSale
+          );
+
           if (salemanFeatureIndex !== -1) {
-            // Cập nhật vị trí saleman
-            mapData.features[salemanFeatureIndex].geometry.coordinates = coords[index];
+            // Cập nhật vị trí saleman với tọa độ đã dịch chuyển
+            mapData.features[salemanFeatureIndex].geometry.coordinates = offsetPosition;
             // Không xoay icon trong khi animation
             mapData.features[salemanFeatureIndex].properties.hasNearby = 0;
           } else {
@@ -618,7 +663,7 @@ export default function RouteMap() {
               type: "Feature",
               geometry: {
                 type: "Point",
-                coordinates: coords[index],
+                coordinates: offsetPosition,
               },
               properties: {
                 dataType: "saleman",
@@ -630,7 +675,7 @@ export default function RouteMap() {
           map.getSource("map-data").setData(mapData);
         }
 
-        // 3. Pan map đến điểm mới
+        // 3. Pan map đến điểm mới (sử dụng tọa độ gốc, không phải offset)
         map.panTo(coords[index]);
       };
 
@@ -698,7 +743,7 @@ export default function RouteMap() {
       // Bắt đầu animation
       routeAnimationIdRef.current = requestAnimationFrame(animate);
     },
-    [salemanCode, hasNearbyPOSMarker, pointOfSale, updateSalemanMarker]
+    [salemanCode, pointOfSale, updateSalemanMarker, getOffsetSalemanCoord]
   );
 
   // ========== HÀM VẼ ROUTE TỪ SALEMAN TRACKING ==========
@@ -952,7 +997,9 @@ export default function RouteMap() {
         if (map._salemanPopup) {
           closeSalemanPopup(map);
         } else {
-          showSalemanPopup(map, salemanCode, feature.geometry.coordinates, true);
+          // Truyền object salesman (hoặc tạo object với code nếu không có info)
+          const salemanData = salemanInfo || { code: salemanCode };
+          showSalemanPopup(map, salemanData, feature.geometry.coordinates, true);
         }
       });
 
@@ -962,7 +1009,9 @@ export default function RouteMap() {
         const feature = e.features[0];
         // Chỉ show popup nếu chưa có popup nào từ click (tránh duplicate)
         if (!map._salemanPopup || !map._salemanPopup._isFromClick) {
-          showSalemanPopup(map, salemanCode, feature.geometry.coordinates, false);
+          // Truyền object salesman (hoặc tạo object với code nếu không có info)
+          const salemanData = salemanInfo || { code: salemanCode };
+          showSalemanPopup(map, salemanData, feature.geometry.coordinates, false);
         }
       });
 
@@ -1039,6 +1088,7 @@ export default function RouteMap() {
     };
   }, [
     salemanCode,
+    salemanInfo,
     showSalemanPopup,
     closeSalemanPopup,
     showPointOfSalePopup,

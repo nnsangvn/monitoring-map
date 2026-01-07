@@ -255,7 +255,7 @@ export default function Map() {
                 }
               }
 
-              const OFFSET_METERS = 20; // khoảng cách dịch ~20m
+              const OFFSET_METERS = 50; // khoảng cách dịch ~20m
               const OFFSET_DEG = OFFSET_METERS / 111320; // 1 độ lat ~111.32km → approx cho VN
 
               // Dịch top-left: giảm lat (lên), giảm long (trái)
@@ -271,6 +271,7 @@ export default function Map() {
                   ...sm,
                   dataType: "salesman",
                   salesmanStatus: sm.is_online === 1 ? "online" : "offline",
+                  isNear: isNear,
                 },
               };
 
@@ -415,6 +416,7 @@ export default function Map() {
             "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
             "icon-allow-overlap": true,
             "icon-anchor": "bottom",
+            "icon-rotate": ["step", ["zoom"], -45, 16, 0],
           },
         });
 
