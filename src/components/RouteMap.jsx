@@ -9,6 +9,7 @@ import accessToken from "./access_token.jsx";
 import { usePointofSale } from "../hooks/usePointofSale.js";
 import { useSalemanRouteTracking } from "../hooks/useSalemanRouteTracking.js";
 import { useMapPopup } from "../hooks/useMapPopup.js";
+import { useSaleMan } from "../hooks/useSaleMan.js";
 import { Alert, Button } from "antd";
 
 goongjs.accessToken = accessToken;
@@ -99,6 +100,12 @@ export default function RouteMap() {
   // Sử dụng hooks để fetch data
   const pointOfSale = usePointofSale(salemanCode, from, to);
   const salemanTracking = useSalemanRouteTracking(salemanCode, from, to);
+
+  // Fetch thông tin đầy đủ của salesman (giống Map.jsx)
+  const saleManList = useSaleMan(salemanCode);
+
+  // Tìm thông tin salesman từ danh sách (thường chỉ có 1 phần tử)
+  const salemanInfo = saleManList && saleManList.length > 0 ? saleManList[0] : null;
 
   // Sử dụng hook để quản lý popup
   const { showSalemanPopup, closeSalemanPopup, showPointOfSalePopup, closePointOfSalePopup } =
@@ -990,7 +997,9 @@ export default function RouteMap() {
         if (map._salemanPopup) {
           closeSalemanPopup(map);
         } else {
-          showSalemanPopup(map, salemanCode, feature.geometry.coordinates, true);
+          // Truyền object salesman (hoặc tạo object với code nếu không có info)
+          const salemanData = salemanInfo || { code: salemanCode };
+          showSalemanPopup(map, salemanData, feature.geometry.coordinates, true);
         }
       });
 
@@ -1000,7 +1009,9 @@ export default function RouteMap() {
         const feature = e.features[0];
         // Chỉ show popup nếu chưa có popup nào từ click (tránh duplicate)
         if (!map._salemanPopup || !map._salemanPopup._isFromClick) {
-          showSalemanPopup(map, salemanCode, feature.geometry.coordinates, false);
+          // Truyền object salesman (hoặc tạo object với code nếu không có info)
+          const salemanData = salemanInfo || { code: salemanCode };
+          showSalemanPopup(map, salemanData, feature.geometry.coordinates, false);
         }
       });
 
@@ -1077,6 +1088,7 @@ export default function RouteMap() {
     };
   }, [
     salemanCode,
+    salemanInfo,
     showSalemanPopup,
     closeSalemanPopup,
     showPointOfSalePopup,
