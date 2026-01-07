@@ -391,7 +391,7 @@ export default function RouteMap() {
             "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
             "icon-allow-overlap": true,
             "icon-anchor": "bottom",
-            "icon-rotate": ["case", ["==", ["get", "hasNearby"], 1], 45, 0],
+            "icon-rotate": ["step", ["zoom"], -45, 16, 0],
             "icon-rotation-alignment": "map",
           },
         });
