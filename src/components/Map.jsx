@@ -9,6 +9,7 @@ import accessToken from "./access_token.jsx";
 import { useSaleMan } from "../hooks/useSaleMan.js";
 import { usePointofSale } from "../hooks/usePointofSale.js";
 import { useMapPopup } from "../hooks/useMapPopup.js";
+import { haversineDistance } from "../utils/mapUtils.js";
 
 goongjs.accessToken = accessToken;
 
@@ -115,7 +116,31 @@ export default function Map() {
         return;
       }
 
-      const coords = [parseFloat(salesman.long), parseFloat(salesman.lat)];
+      // Tính toán tọa độ đã dịch chuyển (giống logic trong updateMapData)
+      let long = parseFloat(salesman.long);
+      let lat = parseFloat(salesman.lat);
+
+      // Kiểm tra xem salesman có gần điểm bán hàng nào không
+      let isNear = false;
+      for (const pos of pointOfSale) {
+        if (!pos.long || !pos.lat) continue;
+        const dist = haversineDistance(lat, long, parseFloat(pos.lat), parseFloat(pos.long));
+        if (dist <= 15) {
+          isNear = true;
+          break;
+        }
+      }
+
+      // Áp dụng offset nếu gần điểm bán hàng
+      const OFFSET_METERS = 20;
+      const OFFSET_DEG = OFFSET_METERS / 111320;
+
+      if (isNear) {
+        lat -= OFFSET_DEG * 0.1; // lên trên
+        long -= OFFSET_DEG * 0.4; // sang trái
+      }
+
+      const coords = [long, lat];
 
       map.flyTo({
         center: coords,
@@ -132,7 +157,7 @@ export default function Map() {
         },
       });
     },
-    [parentCode, showSalemanPopup]
+    [parentCode, pointOfSale, showSalemanPopup]
   );
 
   // === CREATE PULSING DOT ===
@@ -211,18 +236,46 @@ export default function Map() {
           // Features từ salesmen (thêm type vào properties)
           ...salesmen
             .filter((sm) => sm.long && sm.lat)
-            .map((sm) => ({
-              type: "Feature",
-              geometry: {
-                type: "Point",
-                coordinates: [parseFloat(sm.long), parseFloat(sm.lat)],
-              },
-              properties: {
-                ...sm,
-                dataType: "salesman", // ← QUAN TRỌNG: đánh dấu loại data
-                salesmanStatus: sm.is_online === 1 ? "online" : "offline",
-              },
-            })),
+            .map((sm) => {
+              let long = parseFloat(sm.long);
+              let lat = parseFloat(sm.lat);
+
+              let isNear = false;
+              for (const pos of pointOfSale) {
+                if (!pos.long || !pos.lat) continue;
+                const dist = haversineDistance(
+                  lat,
+                  long,
+                  parseFloat(pos.lat),
+                  parseFloat(pos.long)
+                );
+                if (dist <= 15) {
+                  isNear = true;
+                  break;
+                }
+              }
+
+              const OFFSET_METERS = 20; // khoảng cách dịch ~20m
+              const OFFSET_DEG = OFFSET_METERS / 111320; // 1 độ lat ~111.32km → approx cho VN
+
+              // Dịch top-left: giảm lat (lên), giảm long (trái)
+              if (isNear) {
+                lat -= OFFSET_DEG * 0.1; // lên trên
+                long -= OFFSET_DEG * 0.4; // sang trái
+              }
+
+              const feature = {
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [long, lat] },
+                properties: {
+                  ...sm,
+                  dataType: "salesman",
+                  salesmanStatus: sm.is_online === 1 ? "online" : "offline",
+                },
+              };
+
+              return feature;
+            }),
           // Features từ point of sale (thêm type vào properties)
           ...pointOfSale
             .filter((pos) => pos.long && pos.lat)
@@ -550,8 +603,8 @@ export default function Map() {
         const feature = e.features[0];
         const sm = feature.properties;
         // Chỉ show popup nếu chưa có popup nào từ click (tránh duplicate)
-        if (!map._salesmanPopup || !map._salesmanPopup._isFromClick) {
-          showSalesmanPopup(map, sm, feature.geometry.coordinates, false);
+        if (!map._salemanPopup || !map._salemanPopup._isFromClick) {
+          showSalemanPopup(map, sm, feature.geometry.coordinates, false);
         }
       });
 
@@ -559,7 +612,7 @@ export default function Map() {
       map.on("mouseleave", "salesman-points", () => {
         map.getCanvas().style.cursor = "";
         // Chỉ đóng popup nếu nó được tạo từ hover (không phải từ click)
-        if (map._salesmanPopup && !map._salesmanPopup._isFromClick) {
+        if (map._salemanPopup && !map._salemanPopup._isFromClick) {
           closeSalemanPopup(map);
         }
       });
