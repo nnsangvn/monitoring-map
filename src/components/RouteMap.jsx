@@ -8,6 +8,7 @@ import { createSVGMarker } from "../utils/marker";
 import accessToken from "./access_token.jsx";
 import { usePointofSale } from "../hooks/usePointofSale.js";
 import { useSalemanRouteTracking } from "../hooks/useSalemanRouteTracking.js";
+import { useMapPopup } from "../hooks/useMapPopup.js";
 import { Alert, Button } from "antd";
 
 goongjs.accessToken = accessToken;
@@ -99,6 +100,10 @@ export default function RouteMap() {
   const pointOfSale = usePointofSale(salemanCode, from, to);
   const salemanTracking = useSalemanRouteTracking(salemanCode, from, to);
 
+  // Sử dụng hook để quản lý popup
+  const { showSalemanPopup, closeSalemanPopup, showPointOfSalePopup, closePointOfSalePopup } =
+    useMapPopup();
+
   const [routeCoordinates, setRouteCoordinates] = useState([]);
 
   // ========== HÀM TÍNH KHOẢNG CÁCH GIỮA 2 ĐIỂM ==========
@@ -177,90 +182,6 @@ export default function RouteMap() {
 
     setRouteCoordinates(filteredCoordinates);
   }, [salemanTracking, filterNearbyPoints]);
-
-  // POPUP POS
-  const showPointOfSalePopup = useCallback((map, pointOfSale, coords, isFromClick = false) => {
-    // Xóa popup cũ nếu có
-    if (map._pointOfSalePopup) {
-      map._pointOfSalePopup.remove();
-      map._pointOfSalePopup = null;
-    }
-
-    const html = `
-      <div class="salesman-popup">
-        <ul>
-          <li> <strong>${pointOfSale.shop_name}</strong> </li>
-          <li><strong>Địa chỉ:</strong> ${pointOfSale.address || "N/A"}</li>
-          <li><strong>Trạng thái:</strong> ${pointOfSale.marker_name || "N/A"}</li>
-        </ul>
-      </div>`;
-
-    const popup = new goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
-      .setLngLat(coords)
-      .setHTML(html)
-      .addTo(map);
-
-    // Đánh dấu popup có phải từ click hay không
-    popup._isFromClick = isFromClick;
-
-    // Lưu popup instance vào map để có thể remove sau
-    map._pointOfSalePopup = popup;
-
-    // Xóa popup khi popup tự đóng (click close button)
-    popup.on("close", () => {
-      map._pointOfSalePopup = null;
-    });
-  }, []);
-
-  // Hàm đóng popup điểm bán
-  const closePointOfSalePopup = useCallback((map) => {
-    if (map._pointOfSalePopup) {
-      map._pointOfSalePopup.remove();
-      map._pointOfSalePopup = null;
-    }
-  }, []);
-
-  // POPUP SALEMAN
-  const showSalemanPopup = useCallback((map, salemanCode, coords, isFromClick = false) => {
-    // Xóa popup cũ nếu có
-    if (map._salemanPopup) {
-      map._salemanPopup.remove();
-      map._salemanPopup = null;
-    }
-
-    const html = `
-      <div class="salesman-popup">
-        <ul>
-          <li> <strong>Nhân viên</strong> </li>
-          <li><strong>Code:</strong> ${salemanCode}</li>
-          <li><strong>Vị trí hiện tại</strong></li>
-        </ul>
-      </div>`;
-
-    const popup = new goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
-      .setLngLat(coords)
-      .setHTML(html)
-      .addTo(map);
-
-    // Đánh dấu popup có phải từ click hay không
-    popup._isFromClick = isFromClick;
-
-    // Lưu popup instance vào map để có thể remove sau
-    map._salemanPopup = popup;
-
-    // Xóa popup khi popup tự đóng (click close button)
-    popup.on("close", () => {
-      map._salemanPopup = null;
-    });
-  }, []);
-
-  // Hàm đóng popup saleman
-  const closeSalemanPopup = useCallback((map) => {
-    if (map._salemanPopup) {
-      map._salemanPopup.remove();
-      map._salemanPopup = null;
-    }
-  }, []);
 
   // ========== HÀM KIỂM TRA CÓ MARKER POS GẦN ĐÓ KHÔNG ==========
   const hasNearbyPOSMarker = useCallback(
