@@ -8,14 +8,15 @@ import { createSVGMarker } from "../utils/marker";
 import accessToken from "./access_token.jsx";
 import { usePointofSale } from "../hooks/usePointofSale.js";
 import { useSalemanRouteTracking } from "../hooks/useSalemanRouteTracking.js";
+import { useMapPopup } from "../hooks/useMapPopup.js";
 import { Alert, Button } from "antd";
-import MapLegend from "./MapLegend.jsx";
 
 goongjs.accessToken = accessToken;
 
 export default function RouteMap() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
+  const [isMapLoaded, setIsMapLoaded] = useState(false); // Thêm state để track map đã load
   const routeAnimationTimerRef = useRef(null); // Thêm ref để lưu timer
   const routeAnimationIdRef = useRef(null); // requestAnimationFrame ID
   const routeAnimationStateRef = useRef({
@@ -99,6 +100,10 @@ export default function RouteMap() {
   const pointOfSale = usePointofSale(salemanCode, from, to);
   const salemanTracking = useSalemanRouteTracking(salemanCode, from, to);
 
+  // Sử dụng hook để quản lý popup
+  const { showSalemanPopup, closeSalemanPopup, showPointOfSalePopup, closePointOfSalePopup } =
+    useMapPopup();
+
   const [routeCoordinates, setRouteCoordinates] = useState([]);
 
   // ========== HÀM TÍNH KHOẢNG CÁCH GIỮA 2 ĐIỂM ==========
@@ -178,90 +183,6 @@ export default function RouteMap() {
     setRouteCoordinates(filteredCoordinates);
   }, [salemanTracking, filterNearbyPoints]);
 
-  // POPUP POS
-  const showPointOfSalePopup = useCallback((map, pointOfSale, coords, isFromClick = false) => {
-    // Xóa popup cũ nếu có
-    if (map._pointOfSalePopup) {
-      map._pointOfSalePopup.remove();
-      map._pointOfSalePopup = null;
-    }
-
-    const html = `
-      <div class="salesman-popup">
-        <ul>
-          <li> <strong>${pointOfSale.shop_name}</strong> </li>
-          <li><strong>Địa chỉ:</strong> ${pointOfSale.address || "N/A"}</li>
-          <li><strong>Trạng thái:</strong> ${pointOfSale.marker_name || "N/A"}</li>
-        </ul>
-      </div>`;
-
-    const popup = new goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
-      .setLngLat(coords)
-      .setHTML(html)
-      .addTo(map);
-
-    // Đánh dấu popup có phải từ click hay không
-    popup._isFromClick = isFromClick;
-
-    // Lưu popup instance vào map để có thể remove sau
-    map._pointOfSalePopup = popup;
-
-    // Xóa popup khi popup tự đóng (click close button)
-    popup.on("close", () => {
-      map._pointOfSalePopup = null;
-    });
-  }, []);
-
-  // Hàm đóng popup điểm bán
-  const closePointOfSalePopup = useCallback((map) => {
-    if (map._pointOfSalePopup) {
-      map._pointOfSalePopup.remove();
-      map._pointOfSalePopup = null;
-    }
-  }, []);
-
-  // POPUP SALEMAN
-  const showSalemanPopup = useCallback((map, salemanCode, coords, isFromClick = false) => {
-    // Xóa popup cũ nếu có
-    if (map._salemanPopup) {
-      map._salemanPopup.remove();
-      map._salemanPopup = null;
-    }
-
-    const html = `
-      <div class="salesman-popup">
-        <ul>
-          <li> <strong>Nhân viên</strong> </li>
-          <li><strong>Code:</strong> ${salemanCode}</li>
-          <li><strong>Vị trí hiện tại</strong></li>
-        </ul>
-      </div>`;
-
-    const popup = new goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
-      .setLngLat(coords)
-      .setHTML(html)
-      .addTo(map);
-
-    // Đánh dấu popup có phải từ click hay không
-    popup._isFromClick = isFromClick;
-
-    // Lưu popup instance vào map để có thể remove sau
-    map._salemanPopup = popup;
-
-    // Xóa popup khi popup tự đóng (click close button)
-    popup.on("close", () => {
-      map._salemanPopup = null;
-    });
-  }, []);
-
-  // Hàm đóng popup saleman
-  const closeSalemanPopup = useCallback((map) => {
-    if (map._salemanPopup) {
-      map._salemanPopup.remove();
-      map._salemanPopup = null;
-    }
-  }, []);
-
   // ========== HÀM KIỂM TRA CÓ MARKER POS GẦN ĐÓ KHÔNG ==========
   const hasNearbyPOSMarker = useCallback(
     (salemanCoord, posPoints, thresholdMeters = 5) => {
@@ -282,54 +203,92 @@ export default function RouteMap() {
     [getDistanceMeters]
   );
 
-  // ========== HÀM VẼ MARKER CHO SALEMAN ==========
-  const updateSalemanMarker = useCallback(
-    (map, coordinates, forceNoRotate = false) => {
-      if (!coordinates || coordinates.length === 0) return;
-
-      // Xóa source và layer cũ nếu có
-      if (map.getSource("saleman-marker")) {
+  // ========== HÀM CẬP NHẬT DỮ LIỆU MAP (GỘP SALEMAN + POS) ==========
+  const updateMapData = useCallback(
+    (map, salemanCoordinates, posPoints) => {
+      // Xóa source và layers cũ nếu có
+      if (map.getSource("map-data")) {
         if (map.getLayer("saleman-marker-point")) map.removeLayer("saleman-marker-point");
-        map.removeSource("saleman-marker");
+        if (map.getLayer("point-of-sale-points")) map.removeLayer("point-of-sale-points");
+        if (map.getLayer("point-of-sale-cluster-count"))
+          map.removeLayer("point-of-sale-cluster-count");
+        if (map.getLayer("point-of-sale-clusters")) map.removeLayer("point-of-sale-clusters");
+        map.removeSource("map-data");
       }
 
       // Lấy điểm cuối cùng làm vị trí hiện tại của saleman
-      const currentPosition = coordinates[coordinates.length - 1];
-
-      if (!currentPosition) return;
+      const currentPosition =
+        salemanCoordinates && salemanCoordinates.length > 0
+          ? salemanCoordinates[salemanCoordinates.length - 1]
+          : null;
 
       // Kiểm tra có marker POS gần đó không
-      const hasNearbyPOS = hasNearbyPOSMarker(currentPosition, pointOfSale, 150);
+      const hasNearbyPOS = currentPosition
+        ? hasNearbyPOSMarker(currentPosition, posPoints, 150)
+        : false;
 
-      // Tạo GeoJSON cho marker saleman với hasNearby property
-      const salemanMarkerGeoJSON = {
+      // Tạo GeoJSON gộp cả saleman VÀ point of sale
+      const combinedGeoJSON = {
         type: "FeatureCollection",
         features: [
-          {
-            type: "Feature",
-            geometry: {
-              type: "Point",
-              coordinates: currentPosition,
-            },
-            properties: {
-              salemanCode: salemanCode,
-              hasNearby: hasNearbyPOS ? 1 : 0, // Thêm property để dùng trong expression
-            },
-          },
+          // Feature từ saleman (nếu có)
+          ...(currentPosition
+            ? [
+                {
+                  type: "Feature",
+                  geometry: {
+                    type: "Point",
+                    coordinates: currentPosition,
+                  },
+                  properties: {
+                    dataType: "saleman", // ← QUAN TRỌNG: đánh dấu loại data
+                    salemanCode: salemanCode,
+                    hasNearby: hasNearbyPOS ? 1 : 0,
+                  },
+                },
+              ]
+            : []),
+          // Features từ point of sale (thêm type vào properties)
+          ...posPoints
+            .filter((pos) => pos.long && pos.lat)
+            .map((pos) => ({
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates: [parseFloat(pos.long), parseFloat(pos.lat)],
+              },
+              properties: {
+                ...pos,
+                dataType: "pointOfSale", // ← QUAN TRỌNG: đánh dấu loại data
+                marker: pos.marker?.toUpperCase() || "GRAY",
+              },
+            })),
         ],
       };
 
-      // Thêm source cho saleman marker
-      map.addSource("saleman-marker", {
+      // Thêm source mới
+      map.addSource("map-data", {
         type: "geojson",
-        data: salemanMarkerGeoJSON,
+        data: combinedGeoJSON,
+        cluster: true,
+        clusterMaxZoom: 14,
+        clusterRadius: 50,
       });
 
-      // Tạo icon cho saleman (màu xanh)
+      // Tạo icon cho saleman và POS
       const saleman_icon = createSVGMarker(APP_COLORS.GREEN, USER_ICON_SVG);
+      const pos_green = createSVGMarker(APP_COLORS.GREEN, POS_ICON_SVG);
+      const pos_yellow = createSVGMarker(APP_COLORS.YELLOW, POS_ICON_SVG);
+      const pos_red = createSVGMarker(APP_COLORS.RED, POS_ICON_SVG);
+      const pos_gray = createSVGMarker(APP_COLORS.GRAY, POS_ICON_SVG);
 
       // Hàm load image từ SVG
       const loadImageFromSVG = (svg, name, callback) => {
+        // Kiểm tra nếu image đã tồn tại thì không load lại
+        if (map.hasImage(name)) {
+          callback();
+          return;
+        }
         const img = new Image();
         img.onload = () => {
           map.addImage(name, img);
@@ -338,17 +297,57 @@ export default function RouteMap() {
         img.src = "data:image/svg+xml;base64," + btoa(svg);
       };
 
-      loadImageFromSVG(saleman_icon, "icon-saleman-current", () => {
-        // Xóa layer cũ nếu có để tạo lại với icon-rotate mới
-        if (map.getLayer("saleman-marker-point")) {
-          map.removeLayer("saleman-marker-point");
-        }
+      const onAllLoaded = () => {
+        if (map.getLayer("point-of-sale-clusters")) return;
 
-        // Thêm layer mới cho saleman marker
+        // === LAYER 1: CLUSTER CIRCLES ===
+        map.addLayer({
+          id: "point-of-sale-clusters",
+          type: "circle",
+          source: "map-data",
+          filter: ["has", "point_count"],
+          paint: {
+            "circle-color": [
+              "step",
+              ["get", "point_count"],
+              "#61A340",
+              10,
+              "#FCEA24",
+              30,
+              "#F01919",
+            ],
+            "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 30, 40],
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+            "circle-opacity": 0.9,
+          },
+        });
+
+        // === LAYER 2: CLUSTER COUNT ===
+        map.addLayer({
+          id: "point-of-sale-cluster-count",
+          type: "symbol",
+          source: "map-data",
+          filter: ["has", "point_count"],
+          layout: {
+            "text-field": "{point_count_abbreviated}",
+            "text-size": 12,
+          },
+          paint: {
+            "text-color": "#ffffff",
+          },
+        });
+
+        // === LAYER 3: SALEMAN MARKER ===
         map.addLayer({
           id: "saleman-marker-point",
           type: "symbol",
-          source: "saleman-marker",
+          source: "map-data",
+          filter: [
+            "all",
+            ["!", ["has", "point_count"]], // không phải cluster
+            ["==", ["get", "dataType"], "saleman"], // CHỈ saleman
+          ],
           layout: {
             "icon-image": "icon-saleman-current",
             "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
@@ -359,164 +358,92 @@ export default function RouteMap() {
           },
         });
 
-        // Đăng ký event listeners chỉ 1 lần (kiểm tra xem đã đăng ký chưa)
-        if (!map._salemanEventsRegistered) {
-          // Click vào marker → hiện popup (popup này sẽ không tự đóng khi mouseleave)
-          map.on("click", "saleman-marker-point", (e) => {
-            e.originalEvent.stopPropagation();
-            const feature = e.features[0];
-            // Nếu popup đã tồn tại và đang hiển thị, đóng nó đi
-            if (map._salemanPopup) {
-              closeSalemanPopup(map);
-            } else {
-              showSalemanPopup(map, salemanCode, feature.geometry.coordinates, true);
-            }
-          });
+        // === LAYER 4: POS POINTS ===
+        map.addLayer({
+          id: "point-of-sale-points",
+          type: "symbol",
+          source: "map-data",
+          filter: [
+            "all",
+            ["!", ["has", "point_count"]], // không phải cluster
+            ["==", ["get", "dataType"], "pointOfSale"], // CHỈ point of sale
+          ],
+          layout: {
+            "icon-image": [
+              "case",
+              ["==", ["get", "marker"], "GREEN"],
+              "icon-pos-green",
+              ["==", ["get", "marker"], "YELLOW"],
+              "icon-pos-yellow",
+              ["==", ["get", "marker"], "RED"],
+              "icon-pos-red",
+              "icon-pos-gray",
+            ],
+            "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
+            "icon-allow-overlap": true,
+            "icon-anchor": "bottom",
+            "icon-rotate": 0,
+          },
+        });
+      };
 
-          // Hover vào marker → hiện popup
-          map.on("mouseenter", "saleman-marker-point", (e) => {
-            map.getCanvas().style.cursor = "pointer";
-            const feature = e.features[0];
-            // Chỉ show popup nếu chưa có popup nào từ click (tránh duplicate)
-            if (!map._salemanPopup || !map._salemanPopup._isFromClick) {
-              showSalemanPopup(map, salemanCode, feature.geometry.coordinates, false);
-            }
-          });
-
-          // Mouseleave → đóng popup (chỉ đóng popup từ hover, không đóng popup từ click)
-          map.on("mouseleave", "saleman-marker-point", () => {
-            map.getCanvas().style.cursor = "";
-            // Chỉ đóng popup nếu nó được tạo từ hover (không phải từ click)
-            if (map._salemanPopup && !map._salemanPopup._isFromClick) {
-              closeSalemanPopup(map);
-            }
-          });
-
-          // Đánh dấu đã đăng ký events
-          map._salemanEventsRegistered = true;
-        }
-      });
+      // Load icons
+      loadImageFromSVG(saleman_icon, "icon-saleman-current", onAllLoaded);
+      loadImageFromSVG(pos_green, "icon-pos-green", onAllLoaded);
+      loadImageFromSVG(pos_yellow, "icon-pos-yellow", onAllLoaded);
+      loadImageFromSVG(pos_red, "icon-pos-red", onAllLoaded);
+      loadImageFromSVG(pos_gray, "icon-pos-gray", onAllLoaded);
     },
-    [salemanCode, showSalemanPopup, closeSalemanPopup, hasNearbyPOSMarker, pointOfSale]
+    [salemanCode, showSalemanPopup, closeSalemanPopup, hasNearbyPOSMarker]
   );
 
-  // ========== HÀM CẬP NHẬT DỮ LIỆU ĐIỂM BÁN ==========
-  const updatePointOfSaleData = useCallback((map, points) => {
-    // Xóa source và layers cũ nếu có
-    if (map.getSource("pointOfSale")) {
-      if (map.getLayer("point-of-sale-points")) map.removeLayer("point-of-sale-points");
-      if (map.getLayer("point-of-sale-cluster-count"))
-        map.removeLayer("point-of-sale-cluster-count");
-      if (map.getLayer("point-of-sale-clusters")) map.removeLayer("point-of-sale-clusters");
-      map.removeSource("pointOfSale");
-    }
+  // ========== HÀM CẬP NHẬT CHỈ VỊ TRÍ SALEMAN (DÙNG CHO ANIMATION) ==========
+  const updateSalemanMarker = useCallback(
+    (map, coordinates, forceNoRotate = false) => {
+      if (!coordinates || coordinates.length === 0) return;
+      if (!map.getSource("map-data")) return;
 
-    // Tạo GeoJSON cho điểm bán (POS) - không cần tính hasNearby vì POS không xoay
-    const pointOfSaleGeoJSON = {
-      type: "FeatureCollection",
-      features: points
-        .filter((point) => point.long && point.lat)
-        .map((point) => ({
+      // Lấy điểm cuối cùng làm vị trí hiện tại của saleman
+      const currentPosition = coordinates[coordinates.length - 1];
+      if (!currentPosition) return;
+
+      // Kiểm tra có marker POS gần đó không
+      const hasNearbyPOS = hasNearbyPOSMarker(currentPosition, pointOfSale, 150);
+
+      // Lấy data hiện tại và cập nhật feature saleman
+      const currentData = map.getSource("map-data")._data;
+      const salemanFeatureIndex = currentData.features.findIndex(
+        (f) => f.properties.dataType === "saleman"
+      );
+
+      if (salemanFeatureIndex !== -1) {
+        // Cập nhật vị trí saleman
+        currentData.features[salemanFeatureIndex].geometry.coordinates = currentPosition;
+        currentData.features[salemanFeatureIndex].properties.hasNearby = forceNoRotate
+          ? 0
+          : hasNearbyPOS
+          ? 1
+          : 0;
+      } else {
+        // Thêm feature saleman nếu chưa có
+        currentData.features.unshift({
           type: "Feature",
           geometry: {
             type: "Point",
-            coordinates: [parseFloat(point.long), parseFloat(point.lat)],
+            coordinates: currentPosition,
           },
           properties: {
-            ...point,
-            marker: point.marker?.toUpperCase() || "GRAY",
+            dataType: "saleman",
+            salemanCode: salemanCode,
+            hasNearby: forceNoRotate ? 0 : hasNearbyPOS ? 1 : 0,
           },
-        })),
-    };
+        });
+      }
 
-    // Thêm source mới
-    map.addSource("pointOfSale", {
-      type: "geojson",
-      data: pointOfSaleGeoJSON,
-      cluster: true,
-      clusterMaxZoom: 14,
-      clusterRadius: 50,
-    });
-
-    const pos_green = createSVGMarker(APP_COLORS.GREEN, POS_ICON_SVG);
-    const pos_yellow = createSVGMarker(APP_COLORS.YELLOW, POS_ICON_SVG);
-    const pos_red = createSVGMarker(APP_COLORS.RED, POS_ICON_SVG);
-    const pos_gray = createSVGMarker(APP_COLORS.GRAY, POS_ICON_SVG);
-
-    // Hàm load image từ SVG
-    const loadImageFromSVG = (svg, name, callback) => {
-      const img = new Image();
-      img.onload = () => {
-        map.addImage(name, img);
-        callback();
-      };
-      img.src = "data:image/svg+xml;base64," + btoa(svg);
-    };
-
-    const onAllLoaded = () => {
-      if (map.getLayer("point-of-sale-clusters")) return;
-      // === LAYER 1: CLUSTER CIRCLES ===
-      map.addLayer({
-        id: "point-of-sale-clusters",
-        type: "circle",
-        source: "pointOfSale",
-        filter: ["has", "point_count"],
-        paint: {
-          "circle-color": ["step", ["get", "point_count"], "#61A340", 10, "#FCEA24", 30, "#F01919"],
-          "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 30, 40],
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#ffffff",
-          "circle-opacity": 0.9,
-        },
-      });
-
-      // === LAYER 2: CLUSTER COUNT ===
-      map.addLayer({
-        id: "point-of-sale-cluster-count",
-        type: "symbol",
-        source: "pointOfSale",
-        filter: ["has", "point_count"],
-        layout: {
-          "text-field": "{point_count_abbreviated}",
-          "text-size": 12,
-        },
-        paint: {
-          "text-color": "#ffffff",
-        },
-      });
-
-      // === LAYER 3: UNCLUSTERED POINTS ===
-      map.addLayer({
-        id: "point-of-sale-points",
-        type: "symbol",
-        source: "pointOfSale",
-        filter: ["!", ["has", "point_count"]],
-        layout: {
-          "icon-image": [
-            "case",
-            ["==", ["get", "marker"], "GREEN"],
-            "icon-pos-green",
-            ["==", ["get", "marker"], "YELLOW"],
-            "icon-pos-yellow",
-            ["==", ["get", "marker"], "RED"],
-            "icon-pos-red",
-            "icon-pos-gray",
-          ],
-          "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
-          "icon-allow-overlap": true,
-          "icon-anchor": "bottom",
-          // POS markers không xoay
-          "icon-rotate": 0,
-        },
-      });
-    };
-
-    // Load icon cho tất cả điểm bán
-    loadImageFromSVG(pos_green, "icon-pos-green", onAllLoaded);
-    loadImageFromSVG(pos_yellow, "icon-pos-yellow", onAllLoaded);
-    loadImageFromSVG(pos_red, "icon-pos-red", onAllLoaded);
-    loadImageFromSVG(pos_gray, "icon-pos-gray", onAllLoaded);
-  }, []);
+      map.getSource("map-data").setData(currentData);
+    },
+    [salemanCode, hasNearbyPOSMarker, pointOfSale]
+  );
 
   // ========== HÀM VẼ ROUTE TĨNH (KHÔNG ANIMATION) ==========
   const drawRouteStatic = useCallback((map, coordinates) => {
@@ -673,22 +600,34 @@ export default function RouteMap() {
         currentData.features[0].geometry.coordinates.push(coords[index]);
         map.getSource("route").setData(currentData);
 
-        // 2. Cập nhật marker salesman
-        if (map.getSource("saleman-marker")) {
-          const salemanMarkerData = {
-            type: "FeatureCollection",
-            features: [
-              {
-                type: "Feature",
-                geometry: {
-                  type: "Point",
-                  coordinates: coords[index],
-                },
-                properties: { salemanCode: salemanCode },
+        // 2. Cập nhật marker salesman trong map-data
+        if (map.getSource("map-data")) {
+          const mapData = map.getSource("map-data")._data;
+          const salemanFeatureIndex = mapData.features.findIndex(
+            (f) => f.properties.dataType === "saleman"
+          );
+
+          if (salemanFeatureIndex !== -1) {
+            // Cập nhật vị trí saleman
+            mapData.features[salemanFeatureIndex].geometry.coordinates = coords[index];
+            // Không xoay icon trong khi animation
+            mapData.features[salemanFeatureIndex].properties.hasNearby = 0;
+          } else {
+            // Thêm feature saleman nếu chưa có
+            mapData.features.unshift({
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates: coords[index],
               },
-            ],
-          };
-          map.getSource("saleman-marker").setData(salemanMarkerData);
+              properties: {
+                dataType: "saleman",
+                salemanCode: salemanCode,
+                hasNearby: 0,
+              },
+            });
+          }
+          map.getSource("map-data").setData(mapData);
         }
 
         // 3. Pan map đến điểm mới
@@ -895,6 +834,8 @@ export default function RouteMap() {
     mapRef.current = map;
 
     map.on("load", () => {
+      setIsMapLoaded(true); // Đánh dấu map đã load
+
       // TẮT POI + NHÃN KHÔNG CẦN (chờ map load xong)
       // Danh sách các layer cần GIỮ LẠI (whitelist)
       const keepLayers = new Set([
@@ -1000,7 +941,41 @@ export default function RouteMap() {
       // === 4. NÚT FULLSCREEN ===
       map.addControl(new goongjs.FullscreenControl());
 
-      // Setup event handlers cho click và hover
+      // ========== SETUP EVENT HANDLERS CHO CLICK VÀ HOVER ==========
+
+      // === EVENT HANDLERS CHO SALEMAN MARKER ===
+      // Click vào marker saleman → hiện popup (popup này sẽ không tự đóng khi mouseleave)
+      map.on("click", "saleman-marker-point", (e) => {
+        e.originalEvent.stopPropagation();
+        const feature = e.features[0];
+        // Nếu popup đã tồn tại và đang hiển thị, đóng nó đi
+        if (map._salemanPopup) {
+          closeSalemanPopup(map);
+        } else {
+          showSalemanPopup(map, salemanCode, feature.geometry.coordinates, true);
+        }
+      });
+
+      // Hover vào saleman marker → hiện popup
+      map.on("mouseenter", "saleman-marker-point", (e) => {
+        map.getCanvas().style.cursor = "pointer";
+        const feature = e.features[0];
+        // Chỉ show popup nếu chưa có popup nào từ click (tránh duplicate)
+        if (!map._salemanPopup || !map._salemanPopup._isFromClick) {
+          showSalemanPopup(map, salemanCode, feature.geometry.coordinates, false);
+        }
+      });
+
+      // Mouseleave → đóng popup (chỉ đóng popup từ hover, không đóng popup từ click)
+      map.on("mouseleave", "saleman-marker-point", () => {
+        map.getCanvas().style.cursor = "";
+        // Chỉ đóng popup nếu nó được tạo từ hover (không phải từ click)
+        if (map._salemanPopup && !map._salemanPopup._isFromClick) {
+          closeSalemanPopup(map);
+        }
+      });
+
+      // === EVENT HANDLERS CHO POS MARKER ===
       // Click vào điểm bán → hiện popup (popup này sẽ không tự đóng khi mouseleave)
       map.on("click", "point-of-sale-points", (e) => {
         e.originalEvent.stopPropagation();
@@ -1014,7 +989,7 @@ export default function RouteMap() {
         }
       });
 
-      // Hover vào marker → hiện popup
+      // Hover vào POS marker → hiện popup
       map.on("mouseenter", "point-of-sale-points", (e) => {
         map.getCanvas().style.cursor = "pointer";
         const feature = e.features[0];
@@ -1034,11 +1009,12 @@ export default function RouteMap() {
         }
       });
 
+      // === EVENT HANDLERS CHO CLUSTER ===
       // Click vào cluster → zoom in
       map.on("click", "point-of-sale-clusters", (e) => {
         const features = e.features;
         const clusterId = features[0].properties.cluster_id;
-        map.getSource("pointOfSale").getClusterExpansionZoom(clusterId, (err, zoom) => {
+        map.getSource("map-data").getClusterExpansionZoom(clusterId, (err, zoom) => {
           if (err) return;
           map.easeTo({
             center: features[0].geometry.coordinates,
@@ -1059,24 +1035,23 @@ export default function RouteMap() {
 
     return () => {
       map.remove();
+      setIsMapLoaded(false);
     };
-  }, []); // CHỈ chạy 1 lần khi mount
+  }, [
+    salemanCode,
+    showSalemanPopup,
+    closeSalemanPopup,
+    showPointOfSalePopup,
+    closePointOfSalePopup,
+  ]); // CHỈ chạy 1 lần khi mount (các callback đều stable)
 
-  // ========== CẬP NHẬT DỮ LIỆU KHI pointOfSale THAY ĐỔI ==========
+  // ========== CẬP NHẬT DỮ LIỆU MAP KHI pointOfSale HOẶC routeCoordinates THAY ĐỔI ==========
   useEffect(() => {
-    if (!mapRef.current || !mapRef.current.loaded()) return;
-    if (pointOfSale.length === 0) return;
+    if (!mapRef.current || !isMapLoaded) return;
 
-    updatePointOfSaleData(mapRef.current, pointOfSale);
-  }, [pointOfSale, updatePointOfSaleData]);
-
-  // ========== CẬP NHẬT MARKER SALEMAN KHI CÓ DỮ LIỆU TRACKING ==========
-  useEffect(() => {
-    if (!mapRef.current || !mapRef.current.loaded()) return;
-    if (routeCoordinates.length === 0) return;
-
-    updateSalemanMarker(mapRef.current, routeCoordinates);
-  }, [routeCoordinates, updateSalemanMarker]);
+    // Cập nhật map data với cả saleman và POS
+    updateMapData(mapRef.current, routeCoordinates, pointOfSale);
+  }, [pointOfSale, routeCoordinates, isMapLoaded, updateMapData]);
 
   // Cleanup timer khi component unmount
   useEffect(() => {
@@ -1147,7 +1122,7 @@ export default function RouteMap() {
     // Xóa route trên map
     const map = mapRef.current;
     if (map && map.loaded()) {
-      // Khôi phục lại marker về trạng thái bình thường
+      // Khôi phục lại marker về trạng thái bình thường (cho phép xoay lại nếu gần POS)
       if (routeCoordinates.length > 0) {
         updateSalemanMarker(map, routeCoordinates, false);
       }
@@ -1184,7 +1159,7 @@ export default function RouteMap() {
   // ========== VẼ ROUTE TĨNH KHI CÓ DỮ LIỆU ROUTE & MAP ĐÃ LOAD ==========
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.loaded()) return;
+    if (!map || !isMapLoaded) return;
 
     // Nếu tắt showStaticRoute thì xóa layer/static source nếu có
     if (!showStaticRoute) {
@@ -1214,16 +1189,16 @@ export default function RouteMap() {
 
     // console.log("✅ [drawRouteStatic] Bắt đầu vẽ route tĩnh với", routeCoordinates.length, "điểm");
     drawRouteStatic(map, routeCoordinates);
-  }, [routeCoordinates, showStaticRoute, drawRouteStatic]);
+  }, [routeCoordinates, showStaticRoute, isMapLoaded, drawRouteStatic]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.loaded()) return;
+    if (!map || !isMapLoaded) return;
     if (!shouldDrawRoute) return;
     if (routeCoordinates.length === 0) return;
 
     updateRouteData(map, routeCoordinates);
-  }, [shouldDrawRoute, routeCoordinates, updateRouteData]);
+  }, [shouldDrawRoute, routeCoordinates, isMapLoaded, updateRouteData]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100vh" }}>

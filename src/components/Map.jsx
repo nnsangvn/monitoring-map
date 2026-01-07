@@ -3,42 +3,94 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "../App.css";
 import "../index.css";
 import { APP_COLORS } from "../constants/colors.js";
-import { USER_ICON_SVG } from "../constants/icon.js";
+import { POS_ICON_SVG, USER_ICON_SVG } from "../constants/icon";
 import { createSVGMarker } from "../utils/marker.js";
 import accessToken from "./access_token.jsx";
 import { useSaleMan } from "../hooks/useSaleMan.js";
+import { usePointofSale } from "../hooks/usePointofSale.js";
+import { useMapPopup } from "../hooks/useMapPopup.js";
+import { haversineDistance } from "../utils/mapUtils.js";
 
 goongjs.accessToken = accessToken;
 
 export default function Map() {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
-  const params = new URLSearchParams(window.location.search);
-  const parentCode = params.get("parent_code");
-
-  const saleMan = useSaleMan(parentCode);
   const [isMapLoaded, setIsMapLoaded] = useState(false); // Thêm state để track map đã load
 
-  // === SHOW SALESMAN POPUP ===
-  const showSalesmanPopup = useCallback((map, salesman, coords) => {
-    const html = `
-      <div class="salesman-popup">
-        <ul>
-          <li> <strong>${salesman.name}</strong> </li>
-          <li><strong>Code:</strong> ${salesman.code}</li>
-          <li><strong>Thiết bị:</strong> ${salesman.device_name || "N/A"}</li>
-          <li><strong>Doanh số tháng:</strong> ${salesman.total_sale}</li>
-          <li><strong>Doanh số ngày:</strong> ${salesman.total_sale_completed}</li>
-          <li><strong>Đã viếng thăm:</strong> ${salesman.total_visit_day} cửa hàng</li>
-          <li><strong>Chưa viếng thăm:</strong>${salesman.total_not_visit_day} </li>
-          <li><strong>Đơn hôm nay:</strong> ${salesman.order_count_day} đơn</li>
-        </ul>
-      </div>`;
-    const popup = new window.goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
-      .setLngLat(coords)
-      .setHTML(html)
-      .addTo(map);
+  // Lưu query params vào state khi mount lần đầu
+  const [queryParams, setQueryParams] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      parentCode: params.get("parent_code"),
+      from: params.get("from"),
+      to: params.get("to"),
+    };
+  });
+
+  // Cập nhật query params khi URL thay đổi
+  useEffect(() => {
+    const updateQueryParams = () => {
+      const params = new URLSearchParams(window.location.search);
+      const newParams = {
+        parentCode: params.get("parent_code"),
+        from: params.get("from"),
+        to: params.get("to"),
+      };
+
+      setQueryParams((prev) => {
+        if (!prev.from || !prev.to || !prev.parentCode) {
+          return newParams;
+        }
+        if (
+          prev.parentCode !== newParams.parentCode ||
+          prev.from !== newParams.from ||
+          prev.to !== newParams.to
+        ) {
+          return newParams;
+        }
+        return prev;
+      });
+    };
+
+    // Đọc ngay lần đầu
+    updateQueryParams();
+
+    // Lưu URL hiện tại để so sánh
+    let lastUrl = window.location.href;
+
+    // Kiểm tra URL mỗi 500ms
+    const checkUrlInterval = setInterval(() => {
+      const currentUrl = window.location.href;
+      if (currentUrl !== lastUrl) {
+        lastUrl = currentUrl;
+        updateQueryParams();
+      }
+    }, 500);
+
+    // Lắng nghe popstate
+    const handlePopState = () => {
+      lastUrl = window.location.href;
+      updateQueryParams();
+    };
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      clearInterval(checkUrlInterval);
+      window.removeEventListener("popstate", handlePopState);
+    };
   }, []);
+
+  // Sử dụng queryParams từ state
+  const { parentCode, from, to } = queryParams;
+
+  // Sử dụng hooks để fetch data
+  const saleMan = useSaleMan(parentCode);
+  const pointOfSale = usePointofSale(parentCode, from, to);
+
+  // Sử dụng hook để quản lý popup
+  const { showSalemanPopup, closeSalemanPopup, showPointOfSalePopup, closePointOfSalePopup } =
+    useMapPopup();
 
   // === FLY TO SALESMAN ===
   const flyToSalesman = useCallback(
@@ -64,7 +116,31 @@ export default function Map() {
         return;
       }
 
-      const coords = [parseFloat(salesman.long), parseFloat(salesman.lat)];
+      // Tính toán tọa độ đã dịch chuyển (giống logic trong updateMapData)
+      let long = parseFloat(salesman.long);
+      let lat = parseFloat(salesman.lat);
+
+      // Kiểm tra xem salesman có gần điểm bán hàng nào không
+      let isNear = false;
+      for (const pos of pointOfSale) {
+        if (!pos.long || !pos.lat) continue;
+        const dist = haversineDistance(lat, long, parseFloat(pos.lat), parseFloat(pos.long));
+        if (dist <= 15) {
+          isNear = true;
+          break;
+        }
+      }
+
+      // Áp dụng offset nếu gần điểm bán hàng
+      const OFFSET_METERS = 20;
+      const OFFSET_DEG = OFFSET_METERS / 111320;
+
+      if (isNear) {
+        lat -= OFFSET_DEG * 0.1; // lên trên
+        long -= OFFSET_DEG * 0.4; // sang trái
+      }
+
+      const coords = [long, lat];
 
       map.flyTo({
         center: coords,
@@ -74,14 +150,14 @@ export default function Map() {
         easing(t) {
           if (t === 1) {
             setTimeout(() => {
-              showSalesmanPopup(map, salesman, coords);
+              showSalemanPopup(map, salesman, coords);
             }, 500);
           }
           return t;
         },
       });
     },
-    [showSalesmanPopup]
+    [parentCode, pointOfSale, showSalemanPopup]
   );
 
   // === CREATE PULSING DOT ===
@@ -140,148 +216,251 @@ export default function Map() {
     };
   };
 
-  // === UPDATE SALESMEN DATA ===
-  const updateSalesmenData = useCallback((map, salesmen) => {
-    // Xóa source và layers cũ nếu có
-    if (map.getSource("salesmen")) {
-      if (map.getLayer("salesman-points")) map.removeLayer("salesman-points");
-      if (map.getLayer("cluster-count")) map.removeLayer("cluster-count");
-      if (map.getLayer("clusters")) map.removeLayer("clusters");
-      map.removeSource("salesmen");
-    }
+  // ========== HÀM CẬP NHẬT DỮ LIỆU MAP (GỘP SALEMAN + POS) ==========
+  const updateMapData = useCallback(
+    (map, salesmen) => {
+      // Xóa source và layers cũ nếu có
+      if (map.getSource("map-data")) {
+        if (map.getLayer("salesman-points")) map.removeLayer("salesman-points");
+        if (map.getLayer("pos-points")) map.removeLayer("pos-points");
+        if (map.getLayer("cluster-count")) map.removeLayer("cluster-count");
+        if (map.getLayer("clusters")) map.removeLayer("clusters");
+        if (map.getLayer("salesman-pulse")) map.removeLayer("salesman-pulse");
+        map.removeSource("map-data");
+      }
 
-    // Tạo GeoJSON mới
-    const salesmenGeoJSON = {
-      type: "FeatureCollection",
-      features: salesmen
-        .filter((sm) => sm.long && sm.lat)
-        .map((sm) => ({
-          type: "Feature",
-          geometry: {
-            type: "Point",
-            coordinates: [parseFloat(sm.long), parseFloat(sm.lat)],
-          },
-          properties: {
-            ...sm,
-            // TẠO THUỘC TÍNH ĐỂ DỄ DÙNG TRONG CASE (rất quan trọng!)
-            salesmanStatus: sm.is_online === 1 ? "online" : "offline",
-          },
-        })),
-    };
+      // Tạo GeoJSON gộp cả salesmen VÀ point of sale
+      const combinedGeoJSON = {
+        type: "FeatureCollection",
+        features: [
+          // Features từ salesmen (thêm type vào properties)
+          ...salesmen
+            .filter((sm) => sm.long && sm.lat)
+            .map((sm) => {
+              let long = parseFloat(sm.long);
+              let lat = parseFloat(sm.lat);
 
-    // Thêm source mới
-    map.addSource("salesmen", {
-      type: "geojson",
-      data: salesmenGeoJSON,
-      cluster: true,
-      clusterMaxZoom: 14,
-      clusterRadius: 50,
-    });
+              let isNear = false;
+              for (const pos of pointOfSale) {
+                if (!pos.long || !pos.lat) continue;
+                const dist = haversineDistance(
+                  lat,
+                  long,
+                  parseFloat(pos.lat),
+                  parseFloat(pos.long)
+                );
+                if (dist <= 15) {
+                  isNear = true;
+                  break;
+                }
+              }
 
-    // Tạm thời tất cả nhân viên dùng màu xanh
-    const saleman_green = createSVGMarker(APP_COLORS.GREEN, USER_ICON_SVG);
-    const saleman_red = createSVGMarker(APP_COLORS.RED, USER_ICON_SVG);
-    const saleman_yellow = createSVGMarker(APP_COLORS.YELLOW, USER_ICON_SVG);
-    const saleman_gray = createSVGMarker(APP_COLORS.GRAY, USER_ICON_SVG);
+              const OFFSET_METERS = 20; // khoảng cách dịch ~20m
+              const OFFSET_DEG = OFFSET_METERS / 111320; // 1 độ lat ~111.32km → approx cho VN
 
-    // Hàm load image từ SVG
-    const loadImageFromSVG = (svg, name, callback) => {
-      const img = new Image();
-      img.onload = () => {
-        map.addImage(name, img);
-        callback();
-      };
-      img.src = "data:image/svg+xml;base64," + btoa(svg);
-    };
+              // Dịch top-left: giảm lat (lên), giảm long (trái)
+              if (isNear) {
+                lat -= OFFSET_DEG * 0.1; // lên trên
+                long -= OFFSET_DEG * 0.4; // sang trái
+              }
 
-    const onAllLoaded = () => {
-      if (map.getLayer("clusters")) return;
+              const feature = {
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [long, lat] },
+                properties: {
+                  ...sm,
+                  dataType: "salesman",
+                  salesmanStatus: sm.is_online === 1 ? "online" : "offline",
+                },
+              };
 
-      // === LAYER 1: CLUSTER CIRCLES ===
-      map.addLayer({
-        id: "clusters",
-        type: "circle",
-        source: "salesmen",
-        filter: ["has", "point_count"],
-        paint: {
-          "circle-color": ["step", ["get", "point_count"], "#61A340", 10, "#FCEA24", 30, "#F01919"],
-          "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 30, 40],
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#ffffff",
-          "circle-opacity": 0.9,
-        },
-      });
-
-      // === LAYER 2: CLUSTER COUNT ===
-      map.addLayer({
-        id: "cluster-count",
-        type: "symbol",
-        source: "salesmen",
-        filter: ["has", "point_count"],
-        layout: {
-          "text-field": "{point_count_abbreviated}",
-          "text-size": 12,
-        },
-        paint: {
-          "text-color": "#ffffff",
-        },
-      });
-
-      // Tạo pulsing dots với màu khác nhau cho online/offline
-      const pulsingDotBlue = createPulsingDot(
-        APP_COLORS.BLUE.replace("rgb", "rgba").replace(")", ", 1)")
-      );
-      const pulsingDotRed = createPulsingDot(
-        APP_COLORS.RED.replace("rgb", "rgba").replace(")", ", 1)")
-      );
-
-      map.addImage("pulsing-dot-blue", pulsingDotBlue, { pixelRatio: 3 });
-      map.addImage("pulsing-dot-red", pulsingDotRed, { pixelRatio: 3 });
-
-      // Layer pulsing dots - PHẢI THÊM TRƯỚC salesman-points
-      map.addLayer({
-        id: "salesman-pulse",
-        type: "symbol",
-        source: "salesmen",
-        filter: [
-          "all",
-          ["!", ["has", "point_count"]], // không phải cluster
-          ["==", ["get", "salesmanStatus"], "online"], // CHỈ khi online
+              return feature;
+            }),
+          // Features từ point of sale (thêm type vào properties)
+          ...pointOfSale
+            .filter((pos) => pos.long && pos.lat)
+            .map((pos) => ({
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates: [parseFloat(pos.long), parseFloat(pos.lat)],
+              },
+              properties: {
+                ...pos,
+                dataType: "pointOfSale", // ← QUAN TRỌNG: đánh dấu loại data
+                marker: pos.marker?.toUpperCase() || "GRAY",
+              },
+            })),
         ],
-        layout: {
-          "icon-image": "pulsing-dot-blue", // cố định luôn là blue
-          "icon-size": 0.5, // Nhỏ hơn icon chính
-          "icon-allow-overlap": true,
-          "icon-anchor": "center", // Center để pulse ở giữa
-        },
+      };
+
+      // Thêm source mới
+      map.addSource("map-data", {
+        type: "geojson",
+        data: combinedGeoJSON,
+        cluster: true,
+        clusterMaxZoom: 14,
+        clusterRadius: 50,
       });
 
-      // === LAYER 4: SALESMAN POINTS (trên pulsing dots) ===
-      map.addLayer({
-        id: "salesman-points",
-        type: "symbol",
-        source: "salesmen",
-        filter: ["!", ["has", "point_count"]],
-        layout: {
-          "icon-image": [
-            "case",
-            ["==", ["get", "salesmanStatus"], "online"],
-            "icon-saleman-green",
-            "icon-saleman-red",
+      // Tạo icon cho saleman và POS, (Layer type: "symbol")
+      const saleman_green = createSVGMarker(APP_COLORS.GREEN, USER_ICON_SVG);
+      const saleman_red = createSVGMarker(APP_COLORS.RED, USER_ICON_SVG);
+      const saleman_yellow = createSVGMarker(APP_COLORS.YELLOW, USER_ICON_SVG);
+      const saleman_gray = createSVGMarker(APP_COLORS.GRAY, USER_ICON_SVG);
+
+      const pos_green = createSVGMarker(APP_COLORS.GREEN, POS_ICON_SVG);
+      const pos_yellow = createSVGMarker(APP_COLORS.YELLOW, POS_ICON_SVG);
+      const pos_red = createSVGMarker(APP_COLORS.RED, POS_ICON_SVG);
+      const pos_gray = createSVGMarker(APP_COLORS.GRAY, POS_ICON_SVG);
+
+      // Hàm load image từ SVG
+      const loadImageFromSVG = (svg, name, callback) => {
+        const img = new Image();
+        img.onload = () => {
+          map.addImage(name, img);
+          callback();
+        };
+        img.src = "data:image/svg+xml;base64," + btoa(svg);
+      };
+
+      const onAllLoaded = () => {
+        if (map.getLayer("clusters")) return;
+
+        // === LAYER 1: CLUSTER CIRCLES ===
+        map.addLayer({
+          id: "clusters",
+          type: "circle",
+          source: "map-data",
+          filter: ["has", "point_count"],
+          paint: {
+            "circle-color": [
+              "step",
+              ["get", "point_count"],
+              "#61A340",
+              10,
+              "#FCEA24",
+              30,
+              "#F01919",
+            ],
+            "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 30, 40],
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+            "circle-opacity": 0.9,
+          },
+        });
+
+        // === LAYER 2: CLUSTER COUNT ===
+        map.addLayer({
+          id: "cluster-count",
+          type: "symbol",
+          source: "map-data",
+          filter: ["has", "point_count"],
+          layout: {
+            "text-field": "{point_count_abbreviated}",
+            "text-size": 12,
+          },
+          paint: {
+            "text-color": "#ffffff",
+          },
+        });
+
+        // Tạo pulsing dots với màu khác nhau cho online/offline
+        const pulsingDotBlue = createPulsingDot(
+          APP_COLORS.BLUE.replace("rgb", "rgba").replace(")", ", 1)")
+        );
+        const pulsingDotRed = createPulsingDot(
+          APP_COLORS.RED.replace("rgb", "rgba").replace(")", ", 1)")
+        );
+
+        map.addImage("pulsing-dot-blue", pulsingDotBlue, { pixelRatio: 3 });
+        map.addImage("pulsing-dot-red", pulsingDotRed, { pixelRatio: 3 });
+
+        // Layer pulsing dots - PHẢI THÊM TRƯỚC salesman-points
+        map.addLayer({
+          id: "salesman-pulse",
+          type: "symbol",
+          source: "map-data",
+          filter: [
+            "all",
+            ["!", ["has", "point_count"]], // không phải cluster
+            ["==", ["get", "dataType"], "salesman"], // CHỈ khi là salesman
+            ["==", ["get", "salesmanStatus"], "online"], // CHỈ khi online
           ],
-          "icon-size": 0.8,
-          "icon-allow-overlap": true,
-          "icon-anchor": "bottom",
-        },
-      });
-    };
+          layout: {
+            "icon-image": "pulsing-dot-blue", // cố định luôn là blue
+            "icon-size": 0.5, // Nhỏ hơn icon chính
+            "icon-allow-overlap": true,
+            "icon-anchor": "center", // Center để pulse ở giữa
+          },
+        });
 
-    // Load icons cho tất cả nhân viên
-    loadImageFromSVG(saleman_green, "icon-saleman-green", onAllLoaded);
-    loadImageFromSVG(saleman_red, "icon-saleman-red", onAllLoaded);
-    loadImageFromSVG(saleman_yellow, "icon-saleman-yellow", onAllLoaded);
-    loadImageFromSVG(saleman_gray, "icon-saleman-gray", onAllLoaded);
-  }, []);
+        // === LAYER 4: SALESMAN POINTS (trên pulsing dots) ===
+        map.addLayer({
+          id: "salesman-points",
+          type: "symbol",
+          source: "map-data",
+          filter: [
+            "all",
+            ["!", ["has", "point_count"]], // không phải cluster
+            ["==", ["get", "dataType"], "salesman"], // ← CHỈ salesmen
+          ],
+          layout: {
+            "icon-image": [
+              "case",
+              ["==", ["get", "salesmanStatus"], "online"],
+              "icon-saleman-green",
+              "icon-saleman-red",
+            ],
+            "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
+            "icon-allow-overlap": true,
+            "icon-anchor": "bottom",
+          },
+        });
+
+        // === LAYER 5: POINT OF SALE (CHỈ point of sale) ===
+        map.addLayer({
+          id: "pos-points",
+          type: "symbol",
+          source: "map-data",
+          filter: [
+            "all",
+            ["!", ["has", "point_count"]], // không phải cluster
+            ["==", ["get", "dataType"], "pointOfSale"], // ← CHỈ point of sale
+          ],
+          layout: {
+            "icon-image": [
+              "case",
+              ["==", ["get", "marker"], "GREEN"],
+              "icon-pos-green",
+              ["==", ["get", "marker"], "YELLOW"],
+              "icon-pos-yellow",
+              ["==", ["get", "marker"], "RED"],
+              "icon-pos-red",
+              "icon-pos-gray",
+            ],
+            "icon-size": ["step", ["zoom"], 0.8, 16, 1.2],
+            "icon-allow-overlap": true,
+            "icon-anchor": "bottom",
+            // POS markers không xoay
+            "icon-rotate": 0,
+          },
+        });
+      };
+
+      // Load icons cho tất cả nhân viên
+      loadImageFromSVG(saleman_green, "icon-saleman-green", onAllLoaded);
+      loadImageFromSVG(saleman_red, "icon-saleman-red", onAllLoaded);
+      loadImageFromSVG(saleman_yellow, "icon-saleman-yellow", onAllLoaded);
+      loadImageFromSVG(saleman_gray, "icon-saleman-gray", onAllLoaded);
+
+      loadImageFromSVG(pos_green, "icon-pos-green", onAllLoaded);
+      loadImageFromSVG(pos_yellow, "icon-pos-yellow", onAllLoaded);
+      loadImageFromSVG(pos_red, "icon-pos-red", onAllLoaded);
+      loadImageFromSVG(pos_gray, "icon-pos-gray", onAllLoaded);
+    },
+    [saleMan, pointOfSale]
+  );
 
   // === KHỞI TẠO MAP (CHỈ 1 LẦN) ===
   useEffect(() => {
@@ -407,18 +586,68 @@ export default function Map() {
       // Setup event handlers cho click và hover
       // Click vào nhân viên → hiện popup (sẽ được thêm sau khi có layers)
       map.on("click", "salesman-points", (e) => {
+        e.originalEvent.stopPropagation();
         const feature = e.features[0];
         const sm = feature.properties;
-        showSalesmanPopup(map, sm, feature.geometry.coordinates);
+        // Nếu popup đã tồn tại và đang hiển thị, đóng nó đi
+        if (map._salesmanPopup) {
+          closeSalemanPopup(map);
+        } else {
+          showSalemanPopup(map, sm, feature.geometry.coordinates, true);
+        }
       });
 
-      // Hover effect
-      map.on("mouseenter", "salesman-points", () => {
+      // Hover vào salesman marker → hiện popup
+      map.on("mouseenter", "salesman-points", (e) => {
         map.getCanvas().style.cursor = "pointer";
+        const feature = e.features[0];
+        const sm = feature.properties;
+        // Chỉ show popup nếu chưa có popup nào từ click (tránh duplicate)
+        if (!map._salemanPopup || !map._salemanPopup._isFromClick) {
+          showSalemanPopup(map, sm, feature.geometry.coordinates, false);
+        }
       });
 
+      // Mouseleave → đóng popup (chỉ đóng popup từ hover, không đóng popup từ click)
       map.on("mouseleave", "salesman-points", () => {
         map.getCanvas().style.cursor = "";
+        // Chỉ đóng popup nếu nó được tạo từ hover (không phải từ click)
+        if (map._salemanPopup && !map._salemanPopup._isFromClick) {
+          closeSalemanPopup(map);
+        }
+      });
+
+      // Click vào điểm bán → hiện popup (popup này sẽ không tự đóng khi mouseleave)
+      map.on("click", "pos-points", (e) => {
+        e.originalEvent.stopPropagation();
+        const feature = e.features[0];
+        const point = feature.properties;
+        // Nếu popup đã tồn tại và đang hiển thị, đóng nó đi
+        if (map._pointOfSalePopup) {
+          closePointOfSalePopup(map);
+        } else {
+          showPointOfSalePopup(map, point, feature.geometry.coordinates, true);
+        }
+      });
+
+      // Hover vào POS marker → hiện popup
+      map.on("mouseenter", "pos-points", (e) => {
+        map.getCanvas().style.cursor = "pointer";
+        const feature = e.features[0];
+        const point = feature.properties;
+        // Chỉ show popup nếu chưa có popup nào từ click (tránh duplicate)
+        if (!map._pointOfSalePopup || !map._pointOfSalePopup._isFromClick) {
+          showPointOfSalePopup(map, point, feature.geometry.coordinates, false);
+        }
+      });
+
+      // Mouseleave → đóng popup (chỉ đóng popup từ hover, không đóng popup từ click)
+      map.on("mouseleave", "pos-points", () => {
+        map.getCanvas().style.cursor = "";
+        // Chỉ đóng popup nếu nó được tạo từ hover (không phải từ click)
+        if (map._pointOfSalePopup && !map._pointOfSalePopup._isFromClick) {
+          closePointOfSalePopup(map);
+        }
       });
 
       // Click vào cluster → zoom in
@@ -456,9 +685,9 @@ export default function Map() {
     if (saleMan.length === 0) return;
 
     // Gọi hàm vẽ data
-    updateSalesmenData(mapRef.current, saleMan);
+    updateMapData(mapRef.current, saleMan);
     flyToSalesman(mapRef.current, saleMan);
-  }, [saleMan, isMapLoaded, updateSalesmenData, flyToSalesman]);
+  }, [saleMan, isMapLoaded, updateMapData, flyToSalesman]);
 
   return (
     <div
