@@ -87,7 +87,13 @@ export default function Map() {
   const pointOfSale = usePointofSale(parentCode, from, to);
 
   // === SHOW SALESMAN POPUP ===
-  const showSalesmanPopup = useCallback((map, salesman, coords) => {
+  const showSalesmanPopup = useCallback((map, salesman, coords, isFromClick = false) => {
+    // Xóa popup cũ nếu có
+    if (map._salesmanPopup) {
+      map._salesmanPopup.remove();
+      map._salesmanPopup = null;
+    }
+
     const html = `
       <div class="salesman-popup">
         <ul>
@@ -105,6 +111,67 @@ export default function Map() {
       .setLngLat(coords)
       .setHTML(html)
       .addTo(map);
+
+    // Đánh dấu popup có phải từ click hay không
+    popup._isFromClick = isFromClick;
+
+    // Lưu popup instance vào map để có thể remove sau
+    map._salesmanPopup = popup;
+
+    // Xóa popup khi popup tự đóng (click close button)
+    popup.on("close", () => {
+      map._salesmanPopup = null;
+    });
+  }, []);
+
+  // Hàm đóng popup salesman
+  const closeSalesmanPopup = useCallback((map) => {
+    if (map._salesmanPopup) {
+      map._salesmanPopup.remove();
+      map._salesmanPopup = null;
+    }
+  }, []);
+
+  // === SHOW POINT OF SALE POPUP ===
+  const showPointOfSalePopup = useCallback((map, pointOfSale, coords, isFromClick = false) => {
+    // Xóa popup cũ nếu có
+    if (map._pointOfSalePopup) {
+      map._pointOfSalePopup.remove();
+      map._pointOfSalePopup = null;
+    }
+
+    const html = `
+      <div class="salesman-popup">
+        <ul>
+          <li> <strong>${pointOfSale.shop_name}</strong> </li>
+          <li><strong>Địa chỉ:</strong> ${pointOfSale.address || "N/A"}</li>
+          <li><strong>Trạng thái:</strong> ${pointOfSale.marker_name || "N/A"}</li>
+        </ul>
+      </div>`;
+
+    const popup = new window.goongjs.Popup({ offset: 25, closeButton: true, maxWidth: "350px" })
+      .setLngLat(coords)
+      .setHTML(html)
+      .addTo(map);
+
+    // Đánh dấu popup có phải từ click hay không
+    popup._isFromClick = isFromClick;
+
+    // Lưu popup instance vào map để có thể remove sau
+    map._pointOfSalePopup = popup;
+
+    // Xóa popup khi popup tự đóng (click close button)
+    popup.on("close", () => {
+      map._pointOfSalePopup = null;
+    });
+  }, []);
+
+  // Hàm đóng popup điểm bán
+  const closePointOfSalePopup = useCallback((map) => {
+    if (map._pointOfSalePopup) {
+      map._pointOfSalePopup.remove();
+      map._pointOfSalePopup = null;
+    }
   }, []);
 
   // === FLY TO SALESMAN ===
@@ -549,18 +616,68 @@ export default function Map() {
       // Setup event handlers cho click và hover
       // Click vào nhân viên → hiện popup (sẽ được thêm sau khi có layers)
       map.on("click", "salesman-points", (e) => {
+        e.originalEvent.stopPropagation();
         const feature = e.features[0];
         const sm = feature.properties;
-        showSalesmanPopup(map, sm, feature.geometry.coordinates);
+        // Nếu popup đã tồn tại và đang hiển thị, đóng nó đi
+        if (map._salesmanPopup) {
+          closeSalesmanPopup(map);
+        } else {
+          showSalesmanPopup(map, sm, feature.geometry.coordinates, true);
+        }
       });
 
-      // Hover effect
-      map.on("mouseenter", "salesman-points", () => {
+      // Hover vào salesman marker → hiện popup
+      map.on("mouseenter", "salesman-points", (e) => {
         map.getCanvas().style.cursor = "pointer";
+        const feature = e.features[0];
+        const sm = feature.properties;
+        // Chỉ show popup nếu chưa có popup nào từ click (tránh duplicate)
+        if (!map._salesmanPopup || !map._salesmanPopup._isFromClick) {
+          showSalesmanPopup(map, sm, feature.geometry.coordinates, false);
+        }
       });
 
+      // Mouseleave → đóng popup (chỉ đóng popup từ hover, không đóng popup từ click)
       map.on("mouseleave", "salesman-points", () => {
         map.getCanvas().style.cursor = "";
+        // Chỉ đóng popup nếu nó được tạo từ hover (không phải từ click)
+        if (map._salesmanPopup && !map._salesmanPopup._isFromClick) {
+          closeSalesmanPopup(map);
+        }
+      });
+
+      // Click vào điểm bán → hiện popup (popup này sẽ không tự đóng khi mouseleave)
+      map.on("click", "pos-points", (e) => {
+        e.originalEvent.stopPropagation();
+        const feature = e.features[0];
+        const point = feature.properties;
+        // Nếu popup đã tồn tại và đang hiển thị, đóng nó đi
+        if (map._pointOfSalePopup) {
+          closePointOfSalePopup(map);
+        } else {
+          showPointOfSalePopup(map, point, feature.geometry.coordinates, true);
+        }
+      });
+
+      // Hover vào POS marker → hiện popup
+      map.on("mouseenter", "pos-points", (e) => {
+        map.getCanvas().style.cursor = "pointer";
+        const feature = e.features[0];
+        const point = feature.properties;
+        // Chỉ show popup nếu chưa có popup nào từ click (tránh duplicate)
+        if (!map._pointOfSalePopup || !map._pointOfSalePopup._isFromClick) {
+          showPointOfSalePopup(map, point, feature.geometry.coordinates, false);
+        }
+      });
+
+      // Mouseleave → đóng popup (chỉ đóng popup từ hover, không đóng popup từ click)
+      map.on("mouseleave", "pos-points", () => {
+        map.getCanvas().style.cursor = "";
+        // Chỉ đóng popup nếu nó được tạo từ hover (không phải từ click)
+        if (map._pointOfSalePopup && !map._pointOfSalePopup._isFromClick) {
+          closePointOfSalePopup(map);
+        }
       });
 
       // Click vào cluster → zoom in
