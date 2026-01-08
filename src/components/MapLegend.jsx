@@ -34,7 +34,7 @@ export default function MapLegend() {
         </div>
         <div className="legend-item">
           <div className="legend-color visited-closed"></div>
-          <div className="legend-text">Khách hàng đóng cửa</div>
+          <div className="legend-text">Điểm bán đóng cửa</div>
         </div>
         <div className="legend-item">
           <div className="legend-color not-visited"></div>
