@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchSaleMan } from "../service/api.ts";
 
-export const useSaleMan = (parentCode) => {
+export const useSaleMan = (parentCode, reloadKey = 0) => {
   const [saleMan, setSaleMan] = useState([]);
 
   useEffect(() => {
@@ -16,7 +16,7 @@ export const useSaleMan = (parentCode) => {
       }
     };
     loadSalesmen();
-  }, [parentCode]);
+  }, [parentCode, reloadKey]);
 
   return saleMan;
 };

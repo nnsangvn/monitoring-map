@@ -30,6 +30,7 @@ export default function RouteMap() {
   const [showStaticRoute, setShowStaticRoute] = useState(false); // Bật/tắt hiển thị lộ trình tĩnh
   const [isPaused, setIsPaused] = useState(false); // Trạng thái tạm dừng
   const [isAnimating, setIsAnimating] = useState(false); // Trạng thái đang animation
+  const [reloadKey, setReloadKey] = useState(0); // Key để force reload data
 
   // Lưu query params vào state khi mount lần đầu
   const [queryParams, setQueryParams] = useState(() => {
@@ -97,12 +98,12 @@ export default function RouteMap() {
   // Sử dụng queryParams từ state
   const { salemanCode, from, to } = queryParams;
 
-  // Sử dụng hooks để fetch data
-  const pointOfSale = usePointofSale(salemanCode, from, to);
-  const salemanTracking = useSalemanRouteTracking(salemanCode, from, to);
+  // Sử dụng hooks để fetch data (thêm reloadKey để force re-fetch)
+  const pointOfSale = usePointofSale(salemanCode, from, to, reloadKey);
+  const salemanTracking = useSalemanRouteTracking(salemanCode, from, to, reloadKey);
 
   // Fetch thông tin đầy đủ của salesman (giống Map.jsx)
-  const saleManList = useSaleMan(salemanCode);
+  const saleManList = useSaleMan(salemanCode, reloadKey);
 
   // Tìm thông tin salesman từ danh sách (thường chỉ có 1 phần tử)
   const salemanInfo = saleManList && saleManList.length > 0 ? saleManList[0] : null;
@@ -1250,8 +1251,100 @@ export default function RouteMap() {
     updateRouteData(map, routeCoordinates);
   }, [shouldDrawRoute, routeCoordinates, isMapLoaded, updateRouteData]);
 
+  // ========== HÀM XỬ LÝ RELOAD ==========
+  const handleReload = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !map.loaded()) return;
+
+    // Xóa tất cả các layer và source liên quan đến saleman và route
+    const layersToRemove = [
+      "saleman-marker-point",
+      "point-of-sale-points",
+      "point-of-sale-cluster-count",
+      "point-of-sale-clusters",
+      "route-line",
+      "route-start-point",
+      "route-static-line",
+      "route-static-start-point",
+    ];
+
+    layersToRemove.forEach((layerId) => {
+      if (map.getLayer(layerId)) {
+        map.removeLayer(layerId);
+      }
+    });
+
+    const sourcesToRemove = [
+      "map-data",
+      "route",
+      "route-start-point",
+      "route-static",
+      "route-static-start-point",
+    ];
+
+    sourcesToRemove.forEach((sourceId) => {
+      if (map.getSource(sourceId)) {
+        map.removeSource(sourceId);
+      }
+    });
+
+    // Reset các state
+    setShouldDrawRoute(false);
+    setShowStaticRoute(false);
+    setIsPaused(false);
+    setIsAnimating(false);
+    routeAnimationStateRef.current = {
+      currentIndex: 1,
+      fullCoordinates: [],
+      isPaused: false,
+      startTime: null,
+    };
+
+    // Clear timer và animation frame
+    if (routeAnimationTimerRef.current) {
+      clearInterval(routeAnimationTimerRef.current);
+      routeAnimationTimerRef.current = null;
+    }
+    if (routeAnimationIdRef.current) {
+      cancelAnimationFrame(routeAnimationIdRef.current);
+      routeAnimationIdRef.current = null;
+    }
+
+    // Đóng các popup nếu có
+    if (map._salemanPopup) {
+      closeSalemanPopup(map);
+    }
+    if (map._pointOfSalePopup) {
+      closePointOfSalePopup(map);
+    }
+
+    // Force reload data bằng cách tăng reloadKey
+    setReloadKey((prev) => prev + 1);
+  }, [closeSalemanPopup, closePointOfSalePopup]);
+
   return (
     <div style={{ position: "relative", width: "100%", height: "100vh" }}>
+      {/* Nút Reload - style giống legend toggle button */}
+      <button
+        className="legend-toggle-btn"
+        onClick={handleReload}
+        type="button"
+        style={{
+          top: "195px",
+          right: "10px",
+        }}
+        title="Tải lại dữ liệu"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24">
+          <path
+            fill="currentColor"
+            d="M12 20q-3.35 0-5.675-2.325T4 12q0-3.35 2.325-5.675T12 4q1.725 0 3.3.712T18 6.75V4h2v7h-7V9h4.2q-.8-1.4-2.187-2.2T12 6Q9.5 6 7.75 7.75T6 12q0 2.5 1.75 4.25T12 18q1.925 0 3.475-1.1T17.65 14h2.1q-.7 2.65-2.85 4.325T12 20"
+            strokeWidth={0.5}
+            stroke="currentColor"
+          />
+        </svg>
+      </button>
+
       {/* Nút bấm nổi trên bản đồ / hoặc thông báo lỗi nếu không có lộ trình */}
       {!shouldDrawRoute && (
         <div

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getSalemanTracking } from "../service/api";
 
-export const useSalemanRouteTracking = (salemanCode, from, to) => {
+export const useSalemanRouteTracking = (salemanCode, from, to, reloadKey = 0) => {
   const [salemanTracking, setSalemanTracking] = useState([]);
 
   useEffect(() => {
@@ -18,7 +18,7 @@ export const useSalemanRouteTracking = (salemanCode, from, to) => {
     if (salemanCode) {
       loadSalemanTracking();
     }
-  }, [salemanCode, from, to]);
+  }, [salemanCode, from, to, reloadKey]);
 
   return salemanTracking;
 };

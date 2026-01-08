@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getPointOfSale } from "../service/api";
 
-export const usePointofSale = (salemanCode, from, to) => {
+export const usePointofSale = (salemanCode, from, to, reloadKey = 0) => {
   const [pointOfSale, setPointOfSale] = useState([]);
 
   useEffect(() => {
@@ -18,7 +18,7 @@ export const usePointofSale = (salemanCode, from, to) => {
     if (salemanCode) {
       loadPointOfSale();
     }
-  }, [salemanCode, from, to]);
+  }, [salemanCode, from, to, reloadKey]);
 
   return pointOfSale;
 };
